@@ -472,7 +472,6 @@ class CodecGraphLayout(gtk.Layout):
       if self.build(extra):
         ok = True
         break
-      break
     if not ok:
       print "Not all routes are placed correctly!!!"
 
