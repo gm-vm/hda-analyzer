@@ -682,6 +682,33 @@ def extpick(argv, edit=False, sign=False, interactive=True):
 	rmtree(tmpdir)
 	return res
 
+def kmirrorpick(argv, edit=True, sign=False, interactive=True):
+	if argv[0] in ['-s', '--signoff']:
+		sign = True
+		del argv[0]
+	sign = sign and ' --signoff' or ' --committer'
+	interactive = interactive and ' -i' or ''
+	repo = os.path.abspath(argv[0])
+	commit = argv[1]
+	tmpdir = ".kmirrorpick"
+	if not os.path.exists(tmpdir):
+		os.mkdir(tmpdir)
+	if os.system("git --work-tree=%s --git-dir=%s format-patch -k --stdout --full-index --committer %s~1..%s > %s" % (repo, repo + '/.git', commit, commit, tmpdir + '/format-patch')):
+		raise ValueError, "format-patch"
+	lines = open(tmpdir + "/format-patch").readlines()
+	open(tmpdir + "/format-patch", "w+").write(''.join(lines))
+	if edit:
+		editor = os.environ.has_key('EDITOR') and os.environ['EDITOR'] or 'vi'
+		copyfile(tmpdir + "/format-patch", tmpdir + "/format-patch.orig")
+		os.system("%s %s" % (editor, tmpdir + "/format-patch"))
+		if not os.system("diff %s %s > /dev/null" % (tmpdir + "/format-patch", tmpdir + "/format-patch.orig")):
+			return "nochanges"
+	res = os.system("git am%s%s -3 --keep %s" % (sign, interactive, tmpdir + '/format-patch'))
+	#if os.system("git --work-tree=%s --git-dir=%s mailinfo -u %s %s < %s > %s" % (repo, repo + '/.git', tmpdir + '/msg', tmpdir + '/patch', tmpdir + '/format-patch', tmpdir + '/info')):
+	#	raise ValueError, "mail-info"
+	rmtree(tmpdir)
+	return res
+
 def edit(argv, remove=False):
 	commit = argv[0]
 	fp = os.popen("git log --pretty=oneline --reverse %s~1..HEAD" % commit)
@@ -885,6 +912,7 @@ CMDS=[
         ['release', release, 'tag [repo]', 'Do an ALSA release (auto = automatic change control)'],
         ['changes', changes, 'oldtag newtag', 'Show changes between oldtag and newtag'],
         ['extpick', extpick, 'local-repo-path commit', 'Pick and merge a patch from another repository'],
+        ['kmirrorpick', kmirrorpick, 'local-repo-path commit', 'Pick and merge a patch from another repository (kmirror mode)'],
         ['edit', edit, 'commit', 'Edit a message for commit'],
         ['remove', remove, 'commit', 'Remove a commit'],
         ['import', import_, 'branch', 'Import changes from a branch.\nRemove duplicate patches.'],
