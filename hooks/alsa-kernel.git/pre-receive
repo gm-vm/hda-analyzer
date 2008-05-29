@@ -39,8 +39,8 @@ ALSA_FILES = (
 )
 
 NOT_ALSA_FILES = (
-    'sound/sound_core.c',
-    'sound/sound_firmware.c',
+#    'sound/sound_core.c',
+#    'sound/sound_firmware.c',
     'sound/oss/',
 )
 
