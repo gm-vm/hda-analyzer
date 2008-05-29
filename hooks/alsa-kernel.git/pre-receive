@@ -380,7 +380,8 @@ def compare_trees(lastref):
             rmtree("alsa-kmirror-repo/%s" % i)
         elif exists("alsa-kmirror-repo/%s" % i):
             remove("alsa-kmirror-repo/%s" % i)
-    for i in ['oss', 'pci/ac97/ak4531_codec.c']:
+    for i in ['oss', 'pci/ac97/ak4531_codec.c', 'isa/sb/sb16_csp_codecs.h',
+    	      'pci/korg1212/korg1212-firmware.h', 'pci/ymfpci/ymfpci_image.h']:
         if isdir("alsa-kernel-repo/%s" % i):
             rmtree("alsa-kernel-repo/%s" % i)
         elif exists("alsa-kernel-repo/%s" % i):
