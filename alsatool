@@ -513,7 +513,7 @@ def extpick(argv, edit=False):
 	rmtree(tmpdir)
 	return res
 
-def editmsg(argv):
+def edit(argv, remove=False):
 	commit = argv[0]
 	fp = os.popen("git log --pretty=oneline --reverse %s~1..HEAD" % commit)
 	commits = []
@@ -534,6 +534,9 @@ def editmsg(argv):
 		raise ValueError, "git-reset"
 	first = True
 	for commit in commits:
+		if remove and first:
+			first = False
+			continue
 		res = extpick(['.', commit], edit=first)
 		if type(res) == type('') and res == "nochanges":
 			print "No changes, resetting back to %s..." % head
@@ -543,6 +546,9 @@ def editmsg(argv):
 			sys.exit(1)
 		first = False
 	rmtree(tmpdir)
+
+def remove(argv):
+	edit(argv, remove=True)
 
 OPTS=[
         ['h', 'help', usage, '', 'Print this help'],
@@ -559,7 +565,8 @@ CMDS=[
         ['release', release, 'tag [repo]', 'Do an ALSA release (auto = automatic change control)'],
         ['changes', changes, 'oldtag newtag', 'Show changes between oldtag and newtag'],
         ['extpick', extpick, 'local-repo-path commit', 'Pick and merge a patch from another repository'],
-        ['edit', editmsg, 'commit', 'Edit a message for commit']
+        ['edit', edit, 'commit', 'Edit a message for commit'],
+        ['remove', remove, 'commit', 'Remove a commit']
 ]
  
 def main():
