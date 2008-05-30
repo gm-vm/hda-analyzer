@@ -305,8 +305,9 @@ def do_check_commit(lines):
     #if not check_email(lines, committer, commit=True):
     #    exit(1)
     if not lines[6][4:].upper().startswith('[ALSA] ') and \
-       not lines[6][4:].upper().startswith('ALSA: '):
-        error(lines, 'First log line does not start with "[ALSA] " or "ALSA: "\n')
+       not lines[6][4:].upper().startswith('ALSA: ') and \
+       not lines[6][4:].upper().startswith('sound: '):
+        error(lines, 'First log line does not start with "[ALSA] " or "ALSA: " or "SOUND: "\n')
         fail()
     lastsigned = ''
     for line in lines[6:]:
