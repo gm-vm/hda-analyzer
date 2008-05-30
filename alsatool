@@ -487,10 +487,22 @@ def extpick(argv):
 		os.mkdir(tmpdir)
 	if os.system("git --work-tree=%s --git-dir=%s format-patch -k --stdout --full-index --committer %s~1..%s > %s" % (repo, repo + '/.git', commit, commit, tmpdir + '/format-patch')):
 		raise ValueError, "format-patch"
-	os.system("git am --committer -i -3 %s" % (tmpdir + '/format-patch'))
+	lines = open(tmpdir + "/format-patch").readlines()
+	for idx in range(0, len(lines)):
+		if lines[idx].startswith('Subject: '):
+			a = lines[idx][8:].strip()
+			if not a.upper().startswith('[ALSA]') and \
+			   not a.upper().startswith('ALSA:') and \
+			   not a.upper().startswith('[SOUND]') and \
+			   not a.upper().startswith('SOUND:'):
+				lines[idx] = 'Subject: sound: ' + a + '\n'
+				print repr(lines[idx])
+			break
+	open(tmpdir + "/format-patch", "w+").write(''.join(lines))
+	os.system("git am --committer -i -3 --keep %s" % (tmpdir + '/format-patch'))
 	#if os.system("git --work-tree=%s --git-dir=%s mailinfo -u %s %s < %s > %s" % (repo, repo + '/.git', tmpdir + '/msg', tmpdir + '/patch', tmpdir + '/format-patch', tmpdir + '/info')):
 	#	raise ValueError, "mail-info"
-	rmtree(tmpdir)	
+	rmtree(tmpdir)
 
 OPTS=[
         ['h', 'help', usage, '', 'Print this help'],
