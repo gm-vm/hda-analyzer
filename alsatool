@@ -12,7 +12,7 @@ Usage:
 import os
 import sys
 import getopt
-from shutil import rmtree
+from shutil import rmtree, copyfile
 
 VERSION="2.0"
 
@@ -479,7 +479,7 @@ def verbose(argv):
 	global VERBOSE
 	VERBOSE=True
 
-def extpick(argv):
+def extpick(argv, edit=False):
 	repo = os.path.abspath(argv[0])
 	commit = argv[1]
 	tmpdir = ".extpick"
@@ -501,9 +501,47 @@ def extpick(argv):
 				print repr(lines[idx])
 			break
 	open(tmpdir + "/format-patch", "w+").write(''.join(lines))
-	os.system("git am --committer -i -3 --keep %s" % (tmpdir + '/format-patch'))
+	if edit:
+		editor = os.environ.has_key('EDITOR') and os.environ['EDITOR'] or 'vi'
+		copyfile(tmpdir + "/format-patch", tmpdir + "/format-patch.orig")
+		os.system("%s %s" % (editor, tmpdir + "/format-patch"))
+		if not os.system("diff %s %s > /dev/null" % (tmpdir + "/format-patch", tmpdir + "/format-patch.orig")):
+			return "nochanges"
+	res = os.system("git am --committer -i -3 --keep %s" % (tmpdir + '/format-patch'))
 	#if os.system("git --work-tree=%s --git-dir=%s mailinfo -u %s %s < %s > %s" % (repo, repo + '/.git', tmpdir + '/msg', tmpdir + '/patch', tmpdir + '/format-patch', tmpdir + '/info')):
 	#	raise ValueError, "mail-info"
+	rmtree(tmpdir)
+	return res
+
+def editmsg(argv):
+	commit = argv[0]
+	fp = os.popen("git log --pretty=oneline --reverse %s~1..HEAD" % commit)
+	commits = []
+	tmpdir = ".editmsg"
+	if not os.path.exists(tmpdir):
+		os.mkdir(tmpdir)
+	while 1:
+		line = fp.readline()
+		if not line:
+			break
+		commits.append(line.split(' ')[0])
+	open(tmpdir + '/commits', "w+").write('\n'.join(commits))
+	head = os.popen("git rev-parse HEAD").readline().strip()
+	print "Original HEAD is %s..." % head
+	print "Removed commits are in %s..." % tmpdir + '/commits'
+	print "Resetting tree to %s..." % os.popen("git log --pretty=oneline %s~1..%s" % (commit, commit)).readline().strip()
+	if os.system("git-reset --hard %s~1" % commit):
+		raise ValueError, "git-reset"
+	first = True
+	for commit in commits:
+		res = extpick(['.', commit], edit=first)
+		if type(res) == type('') and res == "nochanges":
+			print "No changes, resetting back to %s..." % head
+			sys.exit(os.system("git reset --hard %s" % head))
+		if res:
+			sys.stderr.write("Error, bailing out\n")
+			sys.exit(1)
+		first = False
 	rmtree(tmpdir)
 
 OPTS=[
@@ -520,7 +558,8 @@ CMDS=[
         ['showchanged', showchanged, 'tag [repo]', 'Show which repositories were changed since tag'],
         ['release', release, 'tag [repo]', 'Do an ALSA release (auto = automatic change control)'],
         ['changes', changes, 'oldtag newtag', 'Show changes between oldtag and newtag'],
-        ['extpick', extpick, 'local-repo-path commit', 'Pick and merge a patch from another repository']
+        ['extpick', extpick, 'local-repo-path commit', 'Pick and merge a patch from another repository'],
+        ['edit', editmsg, 'commit', 'Edit a message for commit']
 ]
  
 def main():
