@@ -307,8 +307,8 @@ def do_check_commit(lines):
     #    exit(1)
     if not lines[6][4:].upper().startswith('[ALSA] ') and \
        not lines[6][4:].upper().startswith('ALSA: ') and \
-       not lines[6][4:].upper().startswith('[sound] ') and \
-       not lines[6][4:].upper().startswith('sound: '):
+       not lines[6][4:].upper().startswith('[SOUND] ') and \
+       not lines[6][4:].upper().startswith('SOUND: '):
         error(lines, 'First log line does not start with "[ALSA] " or "ALSA: " or "[SOUND] " or "SOUND: "\n')
         fail()
     lastsigned = ''
