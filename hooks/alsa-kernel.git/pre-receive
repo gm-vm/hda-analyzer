@@ -9,6 +9,7 @@ import re
 TMP_PATH = '/dev/shm'
 
 REPO_DIR = '/home/alsa-server/home/repositories'
+ALSA_REPO = REPO_DIR + '/alsa.git'
 KMIRROR_REPO = REPO_DIR + '/alsa-kmirror.git'
 KERNEL_REPO = REPO_DIR + '/alsa-kernel.git'
 
