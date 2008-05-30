@@ -199,13 +199,15 @@ def try_to_merge(commit):
                 afile1 = to_alsa_file(file1, 'a/')
                 afile2 = to_alsa_file(file2, 'b/')
                 rlines.append('diff --git %s %s\n' % (afile1, afile2))
-                if ok2:
-                    addfiles.append(afile2[2:])
-                elif ok1:
-                    rmfiles.append(afile1[2:])
+                addfiles.append(to_alsa_file(file1, 'a/')[2:])
                 ok = True
         elif ok and (line.startswith('--- a/') or line.startswith('+++ b/')):
             rlines.append(line[:6] + to_alsa_file(line[6:].strip()) + '\n')
+        elif ok and line.startswith('+++ /dev/null'):
+            spec = to_alsa_file(file1, 'a/')[2:]
+            rmfiles.append(spec)
+            addfiles.remove(spec)
+            rlines.append(line)
         elif ok:
             rlines.append(line)
     fp.close()
@@ -366,7 +368,7 @@ def compare_trees(lastref):
             rmtree("alsa-kmirror-repo/%s" % i)
         elif exists("alsa-kmirror-repo/%s" % i):
             remove("alsa-kmirror-repo/%s" % i)
-    for i in ['oss']:
+    for i in ['oss', 'pci/ac97/ak4531_codec.c']:
         if isdir("alsa-kernel-repo/%s" % i):
             rmtree("alsa-kernel-repo/%s" % i)
         elif exists("alsa-kernel-repo/%s" % i):
