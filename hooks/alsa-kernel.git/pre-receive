@@ -125,13 +125,13 @@ def read_kmirror_commits():
         ALSA_COMMITS[commitref] = commit
     fp.close()
 
-    worktree = TMP_PATH + '/alsa-kmirror-repo'
+    worktree = TMP_PATH + '/alsa-repo'
     rmtree(worktree, ignore_errors=True)
     mkdir(worktree)
-    if system("git --work-tree=%s --git-dir=%s checkout -q master scripts" % (worktree, KMIRROR_REPO)):
+    if system("git --work-tree=%s --git-dir=%s checkout -q master kernel-sync" % (worktree, ALSA_REPO)):
         raise ValueError, 'git checkout'
-    if exists(worktree + '/scripts/git-ok-commits'):
-        fp = open(worktree + '/scripts/git-ok-commits')
+    if exists(worktree + '/kernel-sync/git-ok-commits'):
+        fp = open(worktree + '/kernel-sync/git-ok-commits')
         while 1:
             line = fp.readline()
             if not line:
@@ -241,7 +241,7 @@ def try_to_merge(commit):
     if system("patch -p 1 --dry-run < %s" % patchfile):
         chdir(curdir)
         error(rlines, "Patch failed - is it already merged?\n")
-        error([], "You may consider to add this commit to alsa-kmirror.git/scripts/git-ok-commits .\n")
+        error([], "You may consider to add this commit to alsa.git/kernel-sync/git-ok-commits .\n")
         error([], "Please, check if patch was merged to alsa-kmirror.git at first!\n")
         error([], 'line: "%s" "%s" "%s" "%s"\n' % (commit['Author'], commit['AuthorDate'], commit['Commit'], commit['CommitDate']))
         fail()
@@ -306,7 +306,7 @@ def do_check_commit(lines):
     #    exit(1)
     if not lines[6][4:].upper().startswith('[ALSA] ') and \
        not lines[6][4:].upper().startswith('ALSA: '):
-        error(lines, 'First log line does not start with "[ALSA] "\n')
+        error(lines, 'First log line does not start with "[ALSA] " or "ALSA: "\n')
         fail()
     lastsigned = ''
     for line in lines[6:]:
