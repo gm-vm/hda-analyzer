@@ -12,6 +12,7 @@ Usage:
 import os
 import sys
 import getopt
+from shutil import rmtree
 
 VERSION="2.0"
 
@@ -478,6 +479,19 @@ def verbose(argv):
 	global VERBOSE
 	VERBOSE=True
 
+def extpick(argv):
+	repo = os.path.abspath(argv[0])
+	commit = argv[1]
+	tmpdir = ".extpick"
+	if not os.path.exists(tmpdir):
+		os.mkdir(tmpdir)
+	if os.system("git --work-tree=%s --git-dir=%s format-patch -k --stdout --full-index --committer %s~1..%s > %s" % (repo, repo + '/.git', commit, commit, tmpdir + '/format-patch')):
+		raise ValueError, "format-patch"
+	os.system("git am --committer -i -3 %s" % (tmpdir + '/format-patch'))
+	#if os.system("git --work-tree=%s --git-dir=%s mailinfo -u %s %s < %s > %s" % (repo, repo + '/.git', tmpdir + '/msg', tmpdir + '/patch', tmpdir + '/format-patch', tmpdir + '/info')):
+	#	raise ValueError, "mail-info"
+	rmtree(tmpdir)	
+
 OPTS=[
         ['h', 'help', usage, '', 'Print this help'],
         ['r', 'root', root, '<GIT root dir>', 'Set GIT root directory (default is %s)' % ROOT],
@@ -491,7 +505,8 @@ CMDS=[
         ['push', push, '[repo]', 'Do push on selected or all (default) repositories'],
         ['showchanged', showchanged, 'tag [repo]', 'Show which repositories were changed since tag'],
         ['release', release, 'tag [repo]', 'Do an ALSA release (auto = automatic change control)'],
-        ['changes', changes, 'oldtag newtag', 'Show changes between oldtag and newtag']
+        ['changes', changes, 'oldtag newtag', 'Show changes between oldtag and newtag'],
+        ['extpick', extpick, 'local-repo-path commit', 'Pick and merge a patch from another repository']
 ]
  
 def main():
