@@ -12,7 +12,10 @@ Usage:
 import os
 import sys
 import getopt
+import re
 from shutil import rmtree, copyfile
+from rfc822 import parsedate_tz
+from comments import COMMENT_MAP
 
 VERSION="2.0"
 
@@ -20,6 +23,7 @@ PROGRAM = sys.argv[0]
 ROOT = os.path.abspath(os.getcwd())
 USER = os.getenv('USER')
 VERBOSE = False
+GERRORS = 0
 REPOSITORIES = [
         'alsa', 'alsa-driver', 'alsa-kmirror', 'alsa-lib', 'alsa-utils',
         'alsa-tools', 'alsa-firmware', 'alsa-oss', 'alsa-plugins',
@@ -243,6 +247,88 @@ def release(argv):
 	for repo in repos:
 		release1(repo, tag)
 
+def _merge_members(members, module='alsa-driver', nice=False):
+
+        def mgo(file, module):
+	        global COMMENT_MAP
+        	map = COMMENT_MAP[module]
+        	if module == 'alsa-driver' and file[:6] == '/acore':
+        		file = '/' + file[2:]
+        	for i in map:
+        		if re.compile("^" + i[0]).search(file):
+        			if i[1] == 'ERROR':
+        				break
+        			return i[1]
+        	if file.endswith('/.cvsignore'):
+        		return 'IGNORE'
+        	if file.endswith('/.hgignore'):
+        		return 'IGNORE'
+        	if file.endswith('/.gitignore'):
+        		return 'IGNORE'
+        	if file.endswith('/.hgtags'):
+        		return 'IGNORE'
+        	if file.endswith('/Makefile.am'):
+        		return file
+        	if file.endswith('/Makefile'):
+        		return file
+        	return 'ERROR'
+
+	global GERRORS
+
+	changes = []
+	result = []
+	for file in members:
+		file = "/" + file
+		while file != '':
+			result1 = mgo(file, module)
+			if result1 == 'ERROR':
+				GERRORS += 1
+				str = 'Cannot identify file "%s" from module %s' % (file, module)
+				fp = open("/tmp/changes-log.txt", "a+")
+				fp.write(str + "\n")
+				fp.close()
+				print str, ' {see /tmp/changes-log.txt file}'
+				result1 = ''
+			if result1 != '':
+				file = ''
+				changes.append(result1)
+			else:
+				i = file.rfind('/')
+				if i < 0:
+					file = ''
+				else:
+					file = file[0:i]
+	i = 0
+	while i < len(changes):
+		j = 0
+		while j < len(changes):
+			if i != j and changes[i] == changes[j]:
+				del changes[j]
+				i = -1
+				break
+			j += 1
+		i += 1
+	xresult = ''
+	maxc = 70
+	if nice:
+	        maxc = 61
+	for i in changes:
+		if len(i) + len(xresult) > maxc:
+			result.append(xresult)
+			xresult = ''
+		if xresult == '':
+			xresult = i
+		else:
+			xresult = xresult + ',' + i
+	if xresult != '':
+		result.append(xresult)
+        if len(result) > 1 and nice:
+                return []
+        elif len(result) > 0 and nice:
+              result[0] = "Modules: " + result[0]
+              result.append('')
+	return result
+
 def changes(argv):
         
 	def rev_to_dot(rev):
@@ -258,32 +344,47 @@ def changes(argv):
 	        	i -= 1
 		print
 
+	def parse_log(fp):
+		commits = []
+		commitref = ''
+		commit = {'comment':[], 'files':[]}
+		header = True
+		while 1:
+			line = fp.readline()
+			if not line:
+				break
+			if line.startswith('commit '):
+				if commitref:
+					while commit['comment'][-1] == '\n':
+						del commit['comment'][-1]
+					commits.append(commit)
+				commitref = line[7:].strip()
+				commit = {'comment':[], 'files':[]}
+				commit['commit'] = commitref
+			elif line.startswith('Author:') or line.startswith('AuthorDate:') or \
+			     line.startswith('Commit:') or line.startswith('CommitDate:') or \
+			     line.startswith('Merge:'):
+			     	a, b = line.split(': ')
+			     	commit[a.strip()] = b.strip()
+			elif line.startswith('    '):
+				if len(commit['comment']) == 0 and line[4:].strip() == '':
+					continue
+				commit['comment'].append(line[4:])
+			elif line.strip() != '':
+				commit['files'].append(line.strip())
+		if commitref:
+			while commit['comment'][-1] == '\n':
+				del commit['comment'][-1]
+			commits.append(commit)
+		return commits
+				
         def store_changes(changes, logs, module, xrev):
-	        if module == 'alsa-kernel':
+	        if module == 'alsa-kmirror':
 		        module = 'alsa-driver'
                 for a in logs:
-                        if a.has_key('branch'):
-                                return
-	        	already = False
-	        	idx1 = 0
-	        	for change in changes:
-	        		if a['user'] == change['user'] and \
-	        		   a['description'] == change['description']:
-	        			# print 'SAME!!!'
-	        			already = True
-	        			break
-	        		if a['date'] < change['date']:
-	        		        a['xrev'] = xrev
-	        		        a['module'] = module
-	        			changes.insert(idx1, a)
-	        			# print 'INSERTED!!!'
-	        			already = True
-	        			break
-	        		idx1 += 1
-	        	if not already:
-		                a['xrev'] = xrev
-		                a['module'] = module
-		                changes.append(a)
+		        a['xrev'] = xrev
+		        a['module'] = module
+		        changes.append(a)
 
         def merge_members(changes):
 	        global GERRORS
@@ -297,11 +398,11 @@ def changes(argv):
 		        module = change['module']
 		        if not res.has_key(module):
 			        res[module] = {}
-                        members = cvsps_merge_members(change['files'], module)
+                        members = _merge_members(change['files'], module)
                         if len(members) == 0:
 			        continue
         		members = members[0]
-	        	mems = string.split(members, ',')
+	        	mems = members.split(',')
 	        	for mem in mems:
 			        if mem == 'IGNORE':
 				        continue
@@ -327,11 +428,11 @@ def changes(argv):
         	items.append(allitems)
         	items[all].sort()
         	for item in items[all]:
-        		if string.find(item, 'Core') >= 0:
+        		if item.find('Core') >= 0:
         			items[core].append(item)
-        		if string.find(item, 'Midlevel') >= 0:
+        		if item.find('Midlevel') >= 0:
         			items[midlevel].append(item)
-        		if string.find(item, 'API') >= 0:
+        		if item.find('API') >= 0:
         			items[midlevel].append(item)
         	idx1 = core
         	while idx1 < all:
@@ -349,7 +450,7 @@ def changes(argv):
 
         def check_tag(tags, rev):
                 for tag in tags:
-                        a = tag[41:-1]
+                        a = tag.strip()
                         if len(a) != len(rev):
                                 continue
                         if a == rev:
@@ -368,7 +469,7 @@ def changes(argv):
 	fromrev = {}
 	for module in fullset:
 		xrev = rev1
-		fp = os.popen("%s tag" % git(module))
+		fp = os.popen("%s tag 2> /dev/null" % git(module))
 		tags = fp.readlines()
 		fp.close()
 		if not check_tag(tags, rev2):
@@ -395,8 +496,10 @@ def changes(argv):
                                 raise ValueError
                         base = "%s.%s.%s" % (major, minor, subminor)
 		fromrev[module] = xrev
-		lines = my_popen("hg log -r %s:%s -v" % (xrev, rev2))
-		store_changes(changes, parse_hg_log(lines, module), module, xrev)
+		fp = os.popen("%s log --pretty=fuller --date=iso --name-only --reverse %s..%s" % (git(module), xrev, rev2))
+		commits = parse_log(fp)
+		del fp
+		store_changes(changes, commits, module, xrev)
 	res = merge_members(changes)
 	modules1 = res.keys()
 	modules = []
@@ -421,7 +524,7 @@ def changes(argv):
 						continue
 					print '===%s===' % b
 					for a in res[module][b]:
-						log = a['description'][0]
+						log = a['comment'][0]
 						if log[:9] == 'Summary: ':
 							log = log[9:]
 						elif log[:8] == 'Summary:':
@@ -439,7 +542,7 @@ def changes(argv):
 						continue
 					print '===%s===' % b
 					for a in res[module][b]:
-						log = a['description']
+						log = a['comment']
 						first = "-"
 						for l in log:
 							if l[:13] == "Patch-level: ":
@@ -571,7 +674,7 @@ CMDS=[
  
 def main():
 	global ROOT
-	if os.path.exists(ROOT + '/../alsa-kernel'):
+	if os.path.exists(ROOT + '/../alsa-driver'):
 		ROOT = os.path.abspath(ROOT + '/..')
         opts = ''
         lopts = []
