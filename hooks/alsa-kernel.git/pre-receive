@@ -6,6 +6,10 @@ from os.path import isdir, exists
 from shutil import rmtree
 import re
 
+# enable (set this to True) if you like to skip pre-receive checks
+# do it only when really necessary after discussed in ALSA committer group
+DO_NOT_CHECK = False
+
 TMP_PATH = '/dev/shm'
 
 REPO_DIR = '/home/alsa-server/home/repositories'
@@ -389,6 +393,8 @@ def compare_trees(lastref):
         stderr.write('PRE-RECEIVE: repositories does not match, please, fix it\n')
         fail()
 
+if DO_NOT_CHECK:
+    exit(0)
 lines = stdin.readlines()
 read_upstream_commits(lines[0][:-1].split(' ')[0])
 lastref = ''
