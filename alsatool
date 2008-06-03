@@ -88,7 +88,7 @@ def push(argv=None):
 	for repo in repos:
 		if os.system("%s checkout master" % git(repo)):
 			raise ValueError, "checkout %s" % repo
-		if os.system("%s push master:refs/heads/master" % git(repo)):
+		if os.system("%s push --tags origin master:refs/heads/master" % git(repo)):
 			raise ValueError, "push %s" % repo
 
 def version_sort(tags):
@@ -171,6 +171,7 @@ def release1(repo, tag):
 	pull([repo])
 	if repo == 'alsa-driver':
 		pull(['alsa-kmirror'])
+	files = []
 	if repo == 'alsa-driver':
 		lines = open(ROOT + '/' + repo + '/configure.in').readlines()
 		for idx in range(0, len(lines)):
@@ -194,15 +195,25 @@ def release1(repo, tag):
 			raise ValueError, "configure"
 		if os.system("make include/sound/version.h"):
 			raise ValueError, "include/sound/version.h"
+		os.chdir(ROOT + '/alsa-kmirror')
+		if os.system("git add include/version.h"):
+			raise ValueError, "git add"
+		if os.system('git commit -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % tag):
+			raise ValueError, "git add"
+		os.system('git tag -d %s')
+		if os.system('git tag %s -a -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % (tag, tag)):
+			raise ValueError, "git tag"
+		files.append('configure.in')
 	elif repo in ['alsa-lib', 'alsa-plugins', 'alsa-utils',
 		      'alsa-firmware', 'alsa-oss']:
 		lines = open(ROOT + '/' + repo + '/configure.in').readlines()
 		for idx in range(0, len(lines)):
 			if lines[idx].startswith('AM_INIT_AUTOMAKE(%s, ' % repo):
-				lines[idx] = 'AM_INIT_AUTOMAKE(%s, %s)"\n' % (repo, version)
+				lines[idx] = 'AM_INIT_AUTOMAKE(%s, %s)\n' % (repo, version)
 				print lines[idx][:-1]
 				break
 		open(ROOT + '/' + repo + '/configure.in', "w+").write(''.join(lines))
+		files.append('configure.in')
 	elif repo == 'alsa-tools':
 		lines = open(ROOT + '/' + repo + '/Makefile').readlines()
 		for idx in range(0, len(lines)):
@@ -211,6 +222,7 @@ def release1(repo, tag):
 				print lines[idx][:-1]
 				break
 		open(ROOT + '/' + repo + '/Makefile', "w+").write(''.join(lines))
+		files.append('Makefile')
 	elif repo == 'alsa-python':
 		lines = open(ROOT + '/' + repo + '/setup.py').readlines()
 		for idx in range(0, len(lines)):
@@ -219,6 +231,7 @@ def release1(repo, tag):
 				print lines[idx][:-1]
 				break
 		open(ROOT + '/' + repo + '/setup.py', "w+").write(''.join(lines))
+		files.append('setup.py')
 		lines = open(ROOT + '/' + repo + '/PKG-INFO').readlines()
 		for idx in range(0, len(lines)):
 			if lines[idx].startswith("Version: "):
@@ -226,6 +239,15 @@ def release1(repo, tag):
 				print lines[idx][:-1]
 				break
 		open(ROOT + '/' + repo + '/PKG-INFO', "w+").write(''.join(lines))
+		files.append('PKG-INFO')
+	os.chdir(ROOT + '/' + repo)
+	for file in files:
+		if os.system("git add %s" % file):
+			raise ValueError, "git add %s" % file
+	if os.system('git commit -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % tag):
+		raise ValueError, "git add"
+	if os.system('git tag %s -a -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % (tag, tag)):
+		raise ValueError, "git tag"
 
 def release(argv):
 	if argv == None or argv[0][0] != 'v':
