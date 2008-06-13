@@ -396,7 +396,6 @@ def compare_trees(lastref):
 if DO_NOT_CHECK:
     exit(0)
 lines = stdin.readlines()
-read_upstream_commits(lines[0][:-1].split(' ')[0])
 lastref = ''
 for line in lines:
     sha1old, sha1new, refname = line[:-1].split(' ')
@@ -409,12 +408,14 @@ for line in lines:
     elif refname != 'refs/heads/master':
         stderr.write('PRE-RECEIVE: invalid branch "%s"\n' % refname)
         fail()
+    if not lastref:
+    	read_upstream_commits(lines[0][:-1].split(' ')[0])
     do_check(sha1old, sha1new, refname)
     lastref = sha1new
 if lastref:
     compare_trees(lastref)
     stderr.write('PRE-RECEIVE: Trees match...\n')
-stderr.write('PRE-RECEIVE: All done\n')
+    stderr.write('PRE-RECEIVE: All done\n')
 if 0:
     stderr.write('PRE-RECEIVE: Test mode active (try later)...\n')
     fail()
