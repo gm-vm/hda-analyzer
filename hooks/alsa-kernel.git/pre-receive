@@ -250,7 +250,8 @@ def try_to_merge(commit):
         error(rlines, "Patch failed - is it already merged?\n")
         error([], "You may consider to add this commit to alsa.git/kernel-sync/git-ok-commits .\n")
         error([], "Please, check if patch was merged to alsa-kmirror.git at first!\n")
-        error([], 'line: "%s" "%s" "%s" "%s"\n' % (commit['Author'], commit['AuthorDate'], commit['Commit'], commit['CommitDate']))
+        error([], 'Line: "%s" "%s" "%s" "%s"\n' % (commit['Author'], commit['AuthorDate'], commit['Commit'], commit['CommitDate']))
+        error([], 'Patch: %s %s' % (commit['commit'][:7], commit['comment'][0]))
         fail()
     if system("git --work-tree=%s --git-dir=%s apply -v %s" % (worktree, KMIRROR_REPO, patchfile)):
         chdir(curdir)
