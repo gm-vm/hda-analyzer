@@ -69,7 +69,13 @@ def clone(argv=None):
 
 def diff(argv=None):
         repos = selectrepos(argv)
+        first = True
 	for repo in repos:
+		if not first:
+			print
+		first = False
+		print "%s" % repo
+		print "*"*len(repo)
 		pull([repo])
 		if os.system("%s --no-pager diff origin/master..master" % git(repo)):
 			raise ValueError, "diff %s" % repo
@@ -109,6 +115,8 @@ def version_sort(tags):
 				idx += 1
 			c1 = int(c[:idx])
 			c2 = c[idx:]
+			if c2 == '':
+				c2 = 'zzzzz'
 			str = "%08i.%08i.%08i.%s" % (a, b, c1, c2)
 			tags1.append(str)
 			tags2[str] = tag
@@ -351,6 +359,40 @@ def _merge_members(members, module='alsa-driver', nice=False):
               result.append('')
 	return result
 
+def parse_log(fp):
+	commits = []
+	commitref = ''
+	commit = {'comment':[], 'files':[]}
+	header = True
+	while 1:
+		line = fp.readline()
+		if not line:
+			break
+		if line.startswith('commit '):
+			if commitref:
+				while commit['comment'][-1] == '\n':
+					del commit['comment'][-1]
+				commits.append(commit)
+			commitref = line[7:].strip()
+			commit = {'comment':[], 'files':[]}
+			commit['commit'] = commitref
+		elif line.startswith('Author:') or line.startswith('AuthorDate:') or \
+		     line.startswith('Commit:') or line.startswith('CommitDate:') or \
+		     line.startswith('Merge:'):
+		     	a, b = line.split(': ')
+			commit[a.strip()] = b.strip()
+		elif line.startswith('    '):
+			if len(commit['comment']) == 0 and line[4:].strip() == '':
+				continue
+			commit['comment'].append(line[4:])
+		elif line.strip() != '':
+			commit['files'].append(line.strip())
+	if commitref:
+		while commit['comment'][-1] == '\n':
+			del commit['comment'][-1]
+		commits.append(commit)
+	return commits
+
 def changes(argv):
         
 	def rev_to_dot(rev):
@@ -366,40 +408,6 @@ def changes(argv):
 	        	i -= 1
 		print
 
-	def parse_log(fp):
-		commits = []
-		commitref = ''
-		commit = {'comment':[], 'files':[]}
-		header = True
-		while 1:
-			line = fp.readline()
-			if not line:
-				break
-			if line.startswith('commit '):
-				if commitref:
-					while commit['comment'][-1] == '\n':
-						del commit['comment'][-1]
-					commits.append(commit)
-				commitref = line[7:].strip()
-				commit = {'comment':[], 'files':[]}
-				commit['commit'] = commitref
-			elif line.startswith('Author:') or line.startswith('AuthorDate:') or \
-			     line.startswith('Commit:') or line.startswith('CommitDate:') or \
-			     line.startswith('Merge:'):
-			     	a, b = line.split(': ')
-			     	commit[a.strip()] = b.strip()
-			elif line.startswith('    '):
-				if len(commit['comment']) == 0 and line[4:].strip() == '':
-					continue
-				commit['comment'].append(line[4:])
-			elif line.strip() != '':
-				commit['files'].append(line.strip())
-		if commitref:
-			while commit['comment'][-1] == '\n':
-				del commit['comment'][-1]
-			commits.append(commit)
-		return commits
-				
         def store_changes(changes, logs, module, xrev):
 	        if module == 'alsa-kmirror':
 		        module = 'alsa-driver'
@@ -504,10 +512,11 @@ def changes(argv):
                         elif rev2[-1:] >= "a":
                                 base = rev2[:-1]
                         for tag in tags:
-                                a = tag[41:-1].strip()
+                                a = tag.strip()[:-1]
 				if a >= rev2:
 					continue
-				tags1.append(tag[40:-1].strip())
+				if tag.strip() != rev2:
+					tags1.append(tag)
                         tags1 = version_sort(tags1)
                         if len(tags1) != 0:
                                 xrev = tags1[len(tags1)-1]
@@ -581,13 +590,13 @@ def usage(code=0, msg=''):
                 print
                 print "\t-%s %s" % (opt[0].replace(':', ''), opt[3])
                 print "\t--%s %s" % (opt[1].replace('=', ''), opt[3])
-                print "\t\t%s" % opt[4]
+                print "\t\t%s" % opt[4].replace('\n', '\t\t')
         print
         print 'Where command is:'
         for cmd in CMDS:
                 print
                 print "\t%s %s" % (cmd[0], cmd[2])
-                print "\t\t%s" % cmd[3]
+                print "\t\t%s" % cmd[3].replace('\n', '\n\t\t')
         if msg:
                 print
                 print msg
@@ -604,7 +613,9 @@ def verbose(argv):
 	global VERBOSE
 	VERBOSE=True
 
-def extpick(argv, edit=False):
+def extpick(argv, edit=False, sign=False, interactive=True):
+	sign = sign and ' --signoff' or ' --committer'
+	interactive = interactive and ' -i' or ''
 	repo = os.path.abspath(argv[0])
 	commit = argv[1]
 	tmpdir = ".extpick"
@@ -623,7 +634,6 @@ def extpick(argv, edit=False):
 			   	if a.upper().startswith('SOUNDS: '):
 			   		a = a[8:].strip()
 				lines[idx] = 'Subject: sound: ' + a + '\n'
-				print repr(lines[idx])
 			break
 	open(tmpdir + "/format-patch", "w+").write(''.join(lines))
 	if edit:
@@ -632,7 +642,7 @@ def extpick(argv, edit=False):
 		os.system("%s %s" % (editor, tmpdir + "/format-patch"))
 		if not os.system("diff %s %s > /dev/null" % (tmpdir + "/format-patch", tmpdir + "/format-patch.orig")):
 			return "nochanges"
-	res = os.system("git am --committer -i -3 --keep %s" % (tmpdir + '/format-patch'))
+	res = os.system("git am%s%s -3 --keep %s" % (sign, interactive, tmpdir + '/format-patch'))
 	#if os.system("git --work-tree=%s --git-dir=%s mailinfo -u %s %s < %s > %s" % (repo, repo + '/.git', tmpdir + '/msg', tmpdir + '/patch', tmpdir + '/format-patch', tmpdir + '/info')):
 	#	raise ValueError, "mail-info"
 	rmtree(tmpdir)
@@ -662,7 +672,7 @@ def edit(argv, remove=False):
 		if remove and first:
 			first = False
 			continue
-		res = extpick(['.', commit], edit=first)
+		res = extpick(['.', commit], edit=first, interactive=interactive)
 		if type(res) == type('') and res == "nochanges":
 			print "No changes, resetting back to %s..." % head
 			sys.exit(os.system("git reset --hard %s" % head))
@@ -674,6 +684,58 @@ def edit(argv, remove=False):
 
 def remove(argv):
 	edit(argv, remove=True)
+
+def import_(argv):
+
+	def compare(commit1, commit2):
+		diff1 = os.popen("git diff %s~1..%s" % (commit1, commit1)).readlines()
+		diff2 = os.popen("git diff %s~1..%s" % (commit2, commit2)).readlines()
+		if len(diff1) != len(diff2):
+			return False
+		for idx in range(0, len(diff1)-1):
+			if diff1[idx].startswith('index ') and diff2[idx].startswith('index '):
+				continue
+			elif diff1[idx].startswith('@@ ') and diff2[idx].startswith('@@ '):
+				a = diff1[idx].split(' ')
+				b = diff2[idx].split(' ')
+				a1 = a[1].split(',')
+				a2 = a[2].split(',')
+				b1 = b[1].split(',')
+				b2 = b[2].split(',')
+				if a1[1] != b1[1] or a2[1] != b2[1]:
+					return False
+			elif diff1[idx] != diff2[idx]:
+				return False
+		return True
+
+	branch = argv[0]
+	base = os.popen("git-merge-base master %s" % branch).readline().strip()
+	log1 = parse_log(os.popen("git log --pretty=fuller --date=iso --reverse master..%s" % branch))
+	log2 = parse_log(os.popen("git log --pretty=fuller --date=iso --reverse %s..master" % base))
+	tomerge = []
+	skipcount = 0
+	for l1 in log1:
+		subject1 = l1['comment'][0].strip()
+		merged = False
+		for l2 in log2:
+			subject2 = l2['comment'][0].strip()
+			if subject1 == subject2:
+				if compare(l1['commit'], l2['commit']):
+					merged = True
+					break
+		if merged:
+			skipcount += 1
+			print "Already picked:"
+			print "** %s/%s %s" % (branch, l1['commit'][:7], l1['comment'][0][:-1])
+			print "** master/%s %s" % (l2['commit'][:7], l2['comment'][0][:-1])
+		else:
+			tomerge.append(l1)
+	print 'Already merged patches: %s' % skipcount
+	print 'Patches to be merged: %s' % len(tomerge)
+	for l1 in tomerge:
+		if extpick(['.', l1['commit']], sign=True):
+			sys.stderr.write('An error occured...\n')
+			return
 
 OPTS=[
         ['h', 'help', usage, '', 'Print this help'],
@@ -691,7 +753,8 @@ CMDS=[
         ['changes', changes, 'oldtag newtag', 'Show changes between oldtag and newtag'],
         ['extpick', extpick, 'local-repo-path commit', 'Pick and merge a patch from another repository'],
         ['edit', edit, 'commit', 'Edit a message for commit'],
-        ['remove', remove, 'commit', 'Remove a commit']
+        ['remove', remove, 'commit', 'Remove a commit'],
+        ['import', import_, 'branch', 'Import changes from a branch.\nRemove duplicate patches.']
 ]
  
 def main():
