@@ -400,7 +400,8 @@ lines = stdin.readlines()
 lastref = ''
 for line in lines:
     sha1old, sha1new, refname = line[:-1].split(' ')
-    if refname in ['refs/heads/linux-2.6', 'refs/heads/for-linus']:
+    if refname in ['refs/heads/linux-2.6', 'refs/heads/for-linus',
+                   'refs/heads/linux-next']:
         continue
     elif refname.startswith('refs/tags/') or \
          refname.startswith('refs/heads/private-') or \
