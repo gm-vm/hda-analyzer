@@ -614,6 +614,9 @@ def verbose(argv):
 	VERBOSE=True
 
 def extpick(argv, edit=False, sign=False, interactive=True):
+	if argv[0] in ['-s', '--signoff']:
+		sign = True
+		del argv[0]
 	sign = sign and ' --signoff' or ' --committer'
 	interactive = interactive and ' -i' or ''
 	repo = os.path.abspath(argv[0])
@@ -672,7 +675,7 @@ def edit(argv, remove=False):
 		if remove and first:
 			first = False
 			continue
-		res = extpick(['.', commit], edit=first, interactive=interactive)
+		res = extpick(['.', commit], edit=first, interactive=True)
 		if type(res) == type('') and res == "nochanges":
 			print "No changes, resetting back to %s..." % head
 			sys.exit(os.system("git reset --hard %s" % head))
@@ -686,6 +689,8 @@ def remove(argv):
 	edit(argv, remove=True)
 
 def import_(argv):
+
+	from sha import new as sha_new
 
 	def compare(commit1, commit2):
 		diff1 = os.popen("git diff %s~1..%s" % (commit1, commit1)).readlines()
@@ -707,7 +712,28 @@ def import_(argv):
 			elif diff1[idx] != diff2[idx]:
 				return False
 		return True
+	
+	def is_blacklisted(commit):
+		hexdigest = sha_new(os.popen("git diff %s~1..%s" % (commit, commit)).read(10*1024*1024)).hexdigest()
+		return hexdigest in blacklist
 
+	def do_blacklist(commit):
+		diff1 = os.popen("git diff %s~1..%s" % (commit['commit'], commit['commit'])).read(10*1024*1024)
+		digest = sha_new(diff1).hexdigest()
+		if not digest in blacklist:
+			subject = commit['comment'][0].strip()
+			open(".git/import-blacklist", "a+").write(digest + ' ' + subject + '\n')
+		else:
+			print 'Already blacklisted...'
+
+	if os.path.exists('.dotest'):
+		sys.stderr.write('previous dotest directory .dotest still exists\n')
+		return
+	blacklist1 = open(".git/import-blacklist").readlines()
+	blacklist = []
+	for l in blacklist1:
+		blacklist.append(l[:l.find(' ')])
+	del blacklist1
 	branch = argv[0]
 	base = os.popen("git-merge-base master %s" % branch).readline().strip()
 	log1 = parse_log(os.popen("git log --pretty=fuller --date=iso --reverse master..%s" % branch))
@@ -715,27 +741,42 @@ def import_(argv):
 	tomerge = []
 	skipcount = 0
 	for l1 in log1:
+		if l1.has_key('Merge'):
+			continue
 		subject1 = l1['comment'][0].strip()
 		merged = False
+		blacklisted = False
 		for l2 in log2:
 			subject2 = l2['comment'][0].strip()
 			if subject1 == subject2:
 				if compare(l1['commit'], l2['commit']):
 					merged = True
 					break
+		if not merged and is_blacklisted(l1['commit']):
+			merged = True
+			blacklisted = True
 		if merged:
 			skipcount += 1
-			print "Already picked:"
+			print "Already picked%s:" % (blacklisted and '/blacklisted' or '')
 			print "** %s/%s %s" % (branch, l1['commit'][:7], l1['comment'][0][:-1])
-			print "** master/%s %s" % (l2['commit'][:7], l2['comment'][0][:-1])
+			if not blacklisted:
+				print "** master/%s %s" % (l2['commit'][:7], l2['comment'][0][:-1])
 		else:
 			tomerge.append(l1)
 	print 'Already merged patches: %s' % skipcount
 	print 'Patches to be merged: %s' % len(tomerge)
 	for l1 in tomerge:
+		oldrev = os.popen("git-rev-parse HEAD").readline().strip()
 		if extpick(['.', l1['commit']], sign=True):
 			sys.stderr.write('An error occured...\n')
 			return
+		rev = os.popen("git-rev-parse HEAD").readline().strip()
+		if oldrev == rev:
+			sys.stdout.write('No change, do you want to black list this patch? (Y/ ) ')
+			sys.stdout.flush()
+			line = sys.stdin.readline()
+			if line.startswith('Y'):
+				do_blacklist(l1)
 
 OPTS=[
         ['h', 'help', usage, '', 'Print this help'],
