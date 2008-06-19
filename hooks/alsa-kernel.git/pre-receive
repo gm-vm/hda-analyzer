@@ -14,6 +14,7 @@ DO_NOT_MERGE = False
 DO_NOT_FAIL = False
 # enable (set this to True) if you like to skip pre-receive checks
 # do it only when really necessary after discussed in ALSA committer group
+# this option turns this whole script off
 DO_NOT_CHECK = False
 
 TMP_PATH = '/dev/shm'
