@@ -6,6 +6,12 @@ from os.path import isdir, exists
 from shutil import rmtree
 import re
 
+# do not merge new patches
+# ignore new patches for alsa-kmirror
+DO_NOT_MERGE = False
+# do not fail when trees does not match
+# just inform users that alsa-kmirror is different
+DO_NOT_FAIL = False
 # enable (set this to True) if you like to skip pre-receive checks
 # do it only when really necessary after discussed in ALSA committer group
 DO_NOT_CHECK = False
@@ -392,7 +398,10 @@ def compare_trees(lastref):
     rmtree(worktreek, ignore_errors=True)
     if notempty:
         stderr.write('PRE-RECEIVE: repositories does not match, please, fix it\n')
-        fail()
+        if DO_NOT_FAIL:
+	    fail()
+	    return False
+    return True
 
 if DO_NOT_CHECK:
     exit(0)
@@ -410,13 +419,14 @@ for line in lines:
     elif refname != 'refs/heads/master':
         stderr.write('PRE-RECEIVE: invalid branch "%s"\n' % refname)
         fail()
-    if not lastref:
-    	read_upstream_commits(lines[0][:-1].split(' ')[0])
-    do_check(sha1old, sha1new, refname)
+    if DO_NOT_MERGE:
+	if not lastref:
+    	    read_upstream_commits(lines[0][:-1].split(' ')[0])
+	do_check(sha1old, sha1new, refname)
     lastref = sha1new
 if lastref:
-    compare_trees(lastref)
-    stderr.write('PRE-RECEIVE: Trees match...\n')
+    if not compare_trees(lastref):
+    	stderr.write('PRE-RECEIVE: Trees match...\n')
     stderr.write('PRE-RECEIVE: All done\n')
 if 0:
     stderr.write('PRE-RECEIVE: Test mode active (try later)...\n')
