@@ -399,7 +399,7 @@ def compare_trees(lastref):
     rmtree(worktreek, ignore_errors=True)
     if notempty:
         stderr.write('PRE-RECEIVE: repositories does not match, please, fix it\n')
-        if DO_NOT_FAIL:
+        if not DO_NOT_FAIL:
 	    fail()
 	    return False
     return True
@@ -419,7 +419,7 @@ for line in lines:
     elif refname != 'refs/heads/master':
         stderr.write('PRE-RECEIVE: invalid branch "%s"\n' % refname)
         fail()
-    if DO_NOT_MERGE:
+    if not DO_NOT_MERGE:
 	if not lastref:
     	    read_upstream_commits(lines[0][:-1].split(' ')[0])
 	do_check(sha1old, sha1new, refname)
