@@ -242,6 +242,7 @@ COMMENT_MAP = {
         ['/soc/codecs/cs4270.(c|h)', 'SoC Codec CS4270'],
         ['/soc/codecs/tlv320aic3x.(c|h)', 'SoC Codec TLV320AIC3X'],
         ['/soc/codecs/uda1380.(c|h)', 'SoC Codec Philips UDA1380'],
+        ['/soc/codecs/ak4535.(c|h)', 'SoC Codec AK4535'],
         ['/soc/codecs', 'ERROR'],
         ['/soc/at32/.*', 'SoC Audio for the Atmel AT32 System-on-Chip'],
         ['/soc/at91/.*', 'SoC Audio for the Atmel AT91 System-on-Chip'],
