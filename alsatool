@@ -24,11 +24,17 @@ ROOT = os.path.abspath(os.getcwd())
 USER = os.getenv('USER')
 VERBOSE = False
 GERRORS = 0
+TMPDIR = '/dev/shm/alsatool'
 REPOSITORIES = [
         'alsa', 'alsa-driver', 'alsa-kmirror', 'alsa-lib', 'alsa-utils',
         'alsa-tools', 'alsa-firmware', 'alsa-oss', 'alsa-plugins',
         'alsa-python'
 ]        
+
+def tmpdir():
+	if not os.path.exists(TMPDIR):
+		os.mkdir(TMPDIR)
+	return TMPDIR
 
 def eprint(msg):
         sys.stderr.write(msg + '\n')
@@ -132,16 +138,21 @@ def version_sort(tags):
 		return res
 	return None
 
-def showchanges1(repos):
+def showchanges1(repos, tag=None):
 	res = {}
+	if tag == "last":
+		tag = None
 	for repo in repos:
 		if repo == 'alsa':
 			continue
 		res[repo] = []
-		tags = version_sort(os.popen("%s tag" % git(repo)).readlines())
-		if not tags:
-			raise ValueError, "cannot obtain tags for repo %s" % repo
-		fp = os.popen("%s diff --stat %s..HEAD" % (git(repo), tags[-1]))
+		mytag = tag
+		if not mytag:
+			tags = version_sort(os.popen("%s tag" % git(repo)).readlines())
+			if not tags:
+				raise ValueError, "cannot obtain tags for repo %s" % repo
+			mytag = tags[-1]
+		fp = os.popen("%s diff --stat %s..HEAD" % (git(repo), mytag))
 		while 1:
 			line = fp.readline()
 			if not line or line.find('|') <= 0:
@@ -165,7 +176,7 @@ def showchanged(argv=None):
 	else:
         	tag = argv[0]
 	        repos = selectrepos(argv[1:])
-	res = showchanges1(repos)
+	res = showchanges1(repos, tag)
 	for repo in res:
 		print 'Repository %s has %s changed files' % (repo, len(res[repo]))
 		if VERBOSE:
@@ -487,6 +498,9 @@ def changes(argv):
                                 return True
                 return False
 
+	def esc(str):
+		return str.replace('>', '&gt;').replace('<', '&lt;').replace('&', '&amp;')
+
 	try:
 		rev1 = argv[0]
 		rev2 = argv[1]
@@ -497,6 +511,12 @@ def changes(argv):
 	changes = []
 	fullset = REPOSITORIES
 	fromrev = {}
+	
+	p = re.compile('.*[a-z]+')
+	rev2last = rev2
+	if not p.match(rev2[1:]):
+		rev2last = rev2 + 'zzzzz'
+	
 	for module in fullset:
 		xrev = rev1
 		fp = os.popen("%s tag 2> /dev/null" % git(module))
@@ -513,7 +533,7 @@ def changes(argv):
                                 base = rev2[:-1]
                         for tag in tags:
                                 a = tag.strip()[:-1]
-				if a >= rev2:
+				if a >= rev2last:
 					continue
 				if tag.strip() != rev2:
 					tags1.append(tag)
@@ -542,6 +562,13 @@ def changes(argv):
 			if not groups.has_key(rev):
 				groups[rev] = []
 			groups[rev].append(module)
+	print '<mediawiki xsi:schemaLocation="http://www.mediawiki.org/xml/export-0.3/ http://www.mediawiki.org/xml/export-0.3.xsd" version="0.3" xml:lang="en">'
+	print '<page>'
+	print '<title>Changes %s %s</title>' % (rev1, rev2)
+	print '<revision>'
+	print '<id>1</id>'
+	print '<contributor><username>Perex</username><id>2</id></contributor>'
+	print '<text xml:space="preserve">'
 	print '{| align="right"\n| __TOC__\n|}'
 	for rev in groups:
 		str = '=Changelog between %s and %s releases=' % (rev_to_dot(rev), rev_to_dot(rev2))
@@ -553,14 +580,14 @@ def changes(argv):
 				for b in items1:
 					if not res[module].has_key(b):
 						continue
-					print '===%s===' % b
+					print '===%s===' % esc(b)
 					for a in res[module][b]:
 						log = a['comment'][0]
 						if log[:9] == 'Summary: ':
 							log = log[9:]
 						elif log[:8] == 'Summary:':
 							log = log[8:]
-						print ': %s' % log[:-1]
+						print ': %s' % esc(log[:-1])
 	for rev in groups:
 		str = '=Detailed changelog between %s and %s releases=' % (rev_to_dot(rev), rev_to_dot(rev2))
 		print str
@@ -571,7 +598,7 @@ def changes(argv):
 				for b in items1:
 					if not res[module].has_key(b):
 						continue
-					print '===%s===' % b
+					print '===%s===' % esc(b)
 					for a in res[module][b]:
 						log = a['comment']
 						first = "-"
@@ -580,8 +607,12 @@ def changes(argv):
 								continue
 							if l[:13] == "Patch-Level: ":
 								continue
-							print ': %s %s' % (first, l[:-1])
+							print ': %s %s' % (first, esc(l[:-1]))
 							first = " "
+	print '</text>'
+	print '</revision>'
+	print '</page>'
+	print '</mediawiki>'
 
 def usage(code=0, msg=''):
         print __doc__ % globals()
@@ -778,6 +809,67 @@ def import_(argv):
 			if line.startswith('Y'):
 				do_blacklist(l1)
 
+def mailit(msg, subject):
+	from email.MIMEText import MIMEText
+	import smtplib
+	import time
+	
+	msg = MIMEText(msg, 'plain', 'utf-8')
+	msg['Subject'] = subject
+	msg['Message-Id'] = '<alsatool%s@perex.cz>' % time.time()
+	msg['From'] = 'alsatool@alsa-project.org'
+	msg['Reply-To'] = 'noreply@alsa-project.org'
+	msg['To'] = 'perex@perex.cz'
+	s = smtplib.SMTP()
+	s.connect()
+	s.sendmail(msg['From'], msg['To'], msg.as_string())
+	s.close()
+	print "An email to %s was sent!" % msg['To']
+
+def tolinus(argv):
+	from datetime import datetime
+	branch = argv[0]
+	if not branch in ["for-linus"]:
+		raise ValueError, "branch %s" % branch
+	today = datetime.today()
+	patch = "alsa-git-%s-%04i-%02i-%02i.patch" % (branch, today.year, today.month, today.day)
+ 	lines = """
+Linus, please pull from:
+
+  git pull git://git.alsa-project.org/alsa-kernel.git %s
+
+gitweb interface:
+
+  http://git.alsa-project.org/?p=alsa-kernel.git;a=shortlog;h=%s
+
+The GNU patch is available at:
+
+  ftp://ftp.alsa-project.org/pub/kernel-patches/%s.gz
+  
+Additional notes:
+ 
+  - 
+  
+The following files will be updated:
+
+""" % (branch, branch, patch)
+	lines1 = os.popen("git-diff -M --stat --summary linux-2.6..%s" % branch).readlines()
+	for line in lines1:
+		if not line.startswith(' create mode'):
+			lines += line
+	lines += '\n'
+	lines += os.popen("git-rev-list --no-merges --pretty=short linux-2.6..%s | git-shortlog" % branch).read(10*1024*1024)
+	filename = tmpdir() + '/' + patch
+	if os.system("git-diff -r linux-2.6..%s > %s" % (branch, filename)):
+		raise ValueError, "git-diff"
+	if os.system("gzip -9 %s" % filename):
+		raise ValueError, "gzip"
+	if os.system("scp %s.gz root@alsa:/var/data/ftp/pub/kernel-patches" % filename):
+		raise ValueError, "scp"
+	os.remove(filename + '.gz')
+	mailit(msg=''.join(lines), subject='[ALSA PATCH] alsa-git merge request')
+	print lines
+
 OPTS=[
         ['h', 'help', usage, '', 'Print this help'],
         ['r', 'root', root, '<GIT root dir>', 'Set GIT root directory (default is %s)' % ROOT],
@@ -795,7 +887,8 @@ CMDS=[
         ['extpick', extpick, 'local-repo-path commit', 'Pick and merge a patch from another repository'],
         ['edit', edit, 'commit', 'Edit a message for commit'],
         ['remove', remove, 'commit', 'Remove a commit'],
-        ['import', import_, 'branch', 'Import changes from a branch.\nRemove duplicate patches.']
+        ['import', import_, 'branch', 'Import changes from a branch.\nRemove duplicate patches.'],
+        ['tolinus', tolinus, 'branch', 'Send a merge request for given branch to linus']
 ]
  
 def main():
