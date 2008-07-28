@@ -30,6 +30,14 @@ REPOSITORIES = [
         'alsa-tools', 'alsa-firmware', 'alsa-oss', 'alsa-plugins',
         'alsa-python'
 ]        
+ALSA_FILES = (
+	'Documentation/sound/alsa/',
+	'sound/',
+	'include/sound/'
+)
+NOT_ALSA_FILES = (
+	'sound/oss/',
+)
 
 def tmpdir():
 	if not os.path.exists(TMPDIR):
@@ -836,6 +844,171 @@ def import_(argv):
 			if line.startswith('Y'):
 				do_blacklist(l1)
 
+def is_alsa_file(file):
+	for i in NOT_ALSA_FILES:
+		if file.startswith(i):
+			return False
+	for i in ALSA_FILES:
+		if file.startswith(i):
+			return True
+	return False
+
+def read_git_ok_commits():
+	git_ok_commits = []
+	fp = open(ROOT + '/alsa/kernel-sync/git-ok-commits')
+	while 1:
+		line = fp.readline()
+		if not line:
+			break
+		if line.startswith('#'):
+			continue
+		git_ok_commits.append(line.strip())
+	fp.close()
+	del fp
+	return git_ok_commits
+
+def mark_git_ok_commits(git_ok_commits, commit):
+	line = '"' + commit['Author'] + '" "' + commit['AuthorDate'] + \
+		       '" "' + commit['Commit'] + '" "' + commit['CommitDate'] + '"'
+	if line in git_ok_commits:
+		print "Commit already marked: %s %s" % (commit['commit'][:7], commit['comment'][0].strip())
+		return False
+	git_ok_commits.append(line)
+	fp = open(ROOT + '/alsa/kernel-sync/git-ok-commits', 'a+')
+	fp.write(line + '\n')
+	fp.close()
+	del fp
+	print "Commit added: %s %s" % (commit['commit'][:7], commit['comment'][0].strip())
+	return True
+
+def kmirrorcheck():
+
+	def compare(commit1, commit2):
+		diff1 = os.popen("git diff %s~1..%s" % (commit1, commit1)).readlines()
+		os.chdir(ROOT + '/alsa-kmirror')
+		diff2 = os.popen("git diff %s~1..%s" % (commit2, commit2)).readlines()
+		os.chdir(ROOT + '/alsa-kernel')
+		if len(diff1) != len(diff2):
+			return False
+		for idx in range(0, len(diff1)-1):
+			if diff1[idx].startswith('index ') and diff2[idx].startswith('index '):
+				continue
+			elif diff1[idx].startswith('diff --git') and diff2[idx].startswith('diff --git'):
+				continue
+			elif diff1[idx].startswith('--- a/') and diff2[idx].startswith('--- a/'):
+				continue
+			elif diff1[idx].startswith('+++ b/') and diff2[idx].startswith('+++ b/'):
+				continue
+			elif diff1[idx].startswith('@@ ') and diff2[idx].startswith('@@ '):
+				a = diff1[idx].split(' ')
+				b = diff2[idx].split(' ')
+				a1 = a[1].split(',')
+				a2 = a[2].split(',')
+				b1 = b[1].split(',')
+				b2 = b[2].split(',')
+				if a1[1] != b1[1] or a2[1] != b2[1]:
+					return False
+			elif diff1[idx] != diff2[idx]:
+				print repr(diff1[idx]), repr(diff2[idx])
+				return False
+		return True
+
+	def getorigin():
+		from httplib import HTTP
+		h = HTTP('git.alsa-project.org')
+		h.putrequest('GET', 'http://git.alsa-project.org/http/alsa-kernel.git/refs/heads/master')
+		h.endheaders()
+		h.getreply()
+		origin = h.getfile().read(1024)
+		h.close()
+		origin = origin.strip()
+		if len(origin) != 40:
+			raise ValueError, "git.alsa-project.org is down?"
+		return origin
+
+	def mystrip(str):
+		if str.startswith('ALSA:') or str.startswith('alsa:'):
+			str = str[5:]
+		elif str.startswith('SOUND:') or str.startswith('sound:'):
+			str = str[6:]
+		elif str.startswith('[ALSA]'):
+			str = str[6:]
+		return str.strip()
+
+	print "Analyzing git-ok-commits.."
+	git_ok_commits = read_git_ok_commits()
+
+	print "Analyzing alsa-kmirror.."
+	os.chdir(ROOT + '/alsa-kmirror')
+	kcommits = parse_log(os.popen("git-log --reverse --pretty=fuller --date=iso v1.0.16..HEAD"))
+	print "Found %s commits after v1.0.16" % len(kcommits)
+	
+	os.chdir(ROOT + '/alsa-kernel')
+	print "Looking for a common base..."
+	base = os.popen("git-merge-base %s linux-2.6" % getorigin()).read(1024).strip()
+	if not base:
+		raise ValueError, "base"
+	print "Base is %s" % repr(base)
+	log1 = os.popen("git-log --reverse --name-only --pretty=oneline --date=iso %s..linux-2.6" % base)
+	last = ''
+	ok = False
+	commits = []
+	while 1:
+		line = log1.readline()
+		if not line:
+			break
+		if line[:40].find('/') > 0:
+			if is_alsa_file(line[:-1]):
+				ok = True
+		else:
+			if last and ok:
+				commits.append(last[:40])
+			last = line
+			ok = False
+	if last and ok:
+		commits.append(last[:40])
+	log1.close()
+
+	print "Found %s commits to be checked..." % len(commits)
+	changes = 0
+	msg = []
+	for commit in commits:
+		fuller = parse_log(os.popen("git-log --name-only --pretty=fuller --date=iso %s~1..%s" % (commit, commit)))[0]
+		if fuller.has_key('Merge'):
+			continue
+		for l2 in kcommits:
+			subj1 = mystrip(fuller['comment'][0])
+			subj2 = mystrip(l2['comment'][0])
+			if subj1 == subj2:
+				if compare(fuller['commit'], l2['commit']):
+					if mark_git_ok_commits(git_ok_commits, fuller):
+						msg.append('  %s %s\n' % (fuller['commit'][:7], fuller['comment'][0].strip()))
+						changes += 1
+				else:
+					print 'Subject Match:'
+					print '  %s %s' % (fuller['commit'][:7], fuller['comment'][0].strip())
+					print '  %s %s' % (l2['commit'][:7], l2['comment'][0].strip())
+	print
+	print '%s commits were marked as duplicate..' % changes
+	if changes:
+		msg.insert(0, 'git-ok-commits: added already merged patches\n\n')
+		msg.append('\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n')
+		os.chdir(ROOT + '/alsa')
+		os.system("git add kernel-sync/git-ok-commits")
+		os.system("git commit -m \"%s\" -e" % ''.join(msg))
+
+def kmirrormark(argv):
+	commit = argv[0]
+	fuller = parse_log(os.popen("git-log --name-only --pretty=fuller --date=iso %s~1..%s" % (commit, commit)))[0]
+	git_ok_commits = read_git_ok_commits()
+	if mark_git_ok_commits(git_ok_commits, fuller):
+		msg = []
+		msg.append('git-ok-commits: added %s %s\n\n' % (fuller['commit'][:7], fuller['comment'][0].strip()))
+		msg.append('\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n')
+		os.chdir(ROOT + '/alsa')
+		os.system("git add kernel-sync/git-ok-commits")
+		os.system("git commit -m \"%s\" -e" % ''.join(msg))
+
 def mailit(msg, subject):
 	from email.MIMEText import MIMEText
 	import smtplib
@@ -916,6 +1089,8 @@ CMDS=[
         ['edit', edit, 'commit', 'Edit a message for commit'],
         ['remove', remove, 'commit', 'Remove a commit'],
         ['import', import_, 'branch', 'Import changes from a branch.\nRemove duplicate patches.'],
+        ['kmirrorcheck', kmirrorcheck, '', 'Check for already merged patches and fill git-ok-commits file.'],
+        ['kmirrormark', kmirrormark, 'commit', 'Mark already merged patch to git-ok-commits file.'],
         ['tolinus', tolinus, 'branch', 'Send a merge request for given branch to linus']
 ]
  
