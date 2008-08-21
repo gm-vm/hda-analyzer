@@ -734,8 +734,8 @@ def edit(argv, remove=False):
 	print "Original HEAD is %s..." % head
 	print "Removed commits are in %s..." % tmpdir + '/commits'
 	print "Resetting tree to %s..." % os.popen("git log --pretty=oneline %s~1..%s" % (commit, commit)).readline().strip()
-	if os.system("git-reset --hard %s~1" % commit):
-		raise ValueError, "git-reset"
+	if os.system("git reset --hard %s~1" % commit):
+		raise ValueError, "git reset"
 	first = True
 	for commit in commits:
 		if remove and first:
@@ -801,7 +801,7 @@ def import_(argv):
 		blacklist.append(l[:l.find(' ')])
 	del blacklist1
 	branch = argv[0]
-	base = os.popen("git-merge-base master %s" % branch).readline().strip()
+	base = os.popen("git merge-base master %s" % branch).readline().strip()
 	log1 = parse_log(os.popen("git log --pretty=fuller --date=iso --reverse master..%s" % branch))
 	log2 = parse_log(os.popen("git log --pretty=fuller --date=iso --reverse %s..master" % base))
 	tomerge = []
@@ -832,11 +832,11 @@ def import_(argv):
 	print 'Already merged patches: %s' % skipcount
 	print 'Patches to be merged: %s' % len(tomerge)
 	for l1 in tomerge:
-		oldrev = os.popen("git-rev-parse HEAD").readline().strip()
+		oldrev = os.popen("git rev-parse HEAD").readline().strip()
 		if extpick(['.', l1['commit']], sign=True):
 			sys.stderr.write('An error occured...\n')
 			return
-		rev = os.popen("git-rev-parse HEAD").readline().strip()
+		rev = os.popen("git rev-parse HEAD").readline().strip()
 		if oldrev == rev:
 			sys.stdout.write('No change, do you want to black list this patch? (Y/ ) ')
 			sys.stdout.flush()
@@ -940,16 +940,16 @@ def kmirrorcheck():
 
 	print "Analyzing alsa-kmirror.."
 	os.chdir(ROOT + '/alsa-kmirror')
-	kcommits = parse_log(os.popen("git-log --reverse --pretty=fuller --date=iso v1.0.16..HEAD"))
+	kcommits = parse_log(os.popen("git log --reverse --pretty=fuller --date=iso v1.0.16..HEAD"))
 	print "Found %s commits after v1.0.16" % len(kcommits)
 	
 	os.chdir(ROOT + '/alsa-kernel')
 	print "Looking for a common base..."
-	base = os.popen("git-merge-base %s linux-2.6" % getorigin()).read(1024).strip()
+	base = os.popen("git merge-base %s linux-2.6" % getorigin()).read(1024).strip()
 	if not base:
 		raise ValueError, "base"
 	print "Base is %s" % repr(base)
-	log1 = os.popen("git-log --reverse --name-only --pretty=oneline --date=iso %s..linux-2.6" % base)
+	log1 = os.popen("git log --reverse --name-only --pretty=oneline --date=iso %s..linux-2.6" % base)
 	last = ''
 	ok = False
 	commits = []
@@ -973,7 +973,7 @@ def kmirrorcheck():
 	changes = 0
 	msg = []
 	for commit in commits:
-		fuller = parse_log(os.popen("git-log --name-only --pretty=fuller --date=iso %s~1..%s" % (commit, commit)))[0]
+		fuller = parse_log(os.popen("git log --name-only --pretty=fuller --date=iso %s~1..%s" % (commit, commit)))[0]
 		if fuller.has_key('Merge'):
 			continue
 		for l2 in kcommits:
@@ -1053,14 +1053,14 @@ Additional notes:
 The following files will be updated:
 
 """ % (branch, branch, patch)
-	lines1 = os.popen("git-diff -M --stat --summary linux-2.6..%s" % branch).readlines()
+	lines1 = os.popen("git diff -M --stat --summary linux-2.6..%s" % branch).readlines()
 	for line in lines1:
 		if not line.startswith(' create mode'):
 			lines += line
 	lines += '\n'
-	lines += os.popen("git-rev-list --no-merges --pretty=short linux-2.6..%s | git-shortlog" % branch).read(10*1024*1024)
+	lines += os.popen("git rev-list --no-merges --pretty=short linux-2.6..%s | git-shortlog" % branch).read(10*1024*1024)
 	filename = tmpdir() + '/' + patch
-	if os.system("git-diff -r linux-2.6..%s > %s" % (branch, filename)):
+	if os.system("git diff -r linux-2.6..%s > %s" % (branch, filename)):
 		raise ValueError, "git-diff"
 	if os.system("gzip -9 %s" % filename):
 		raise ValueError, "gzip"
