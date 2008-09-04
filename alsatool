@@ -995,6 +995,7 @@ def kmirrorcheck():
 		msg.append('\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n')
 		os.chdir(ROOT + '/alsa')
 		os.system("git add kernel-sync/git-ok-commits")
+		msg = ''.join(msg).replace('"', '\\"')
 		os.system("git commit -m \"%s\" -e" % ''.join(msg))
 
 def kmirrormark(argv):
