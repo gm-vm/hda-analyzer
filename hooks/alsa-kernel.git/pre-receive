@@ -89,7 +89,7 @@ def to_alsa_file(gitfile, prefix=''):
     raise ValueError, repr(gitfile)
 
 def check_email(lines, fullemail, commit = False):
-    #print 'E-mail: "%s"' % fullemail
+    #print('E-mail: "%s"' % fullemail)
     name, email = fullemail.split('<')
     name = name.strip()
     email = email.strip()
