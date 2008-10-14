@@ -384,7 +384,7 @@ def compare_trees(lastref):
     for i in ['oss', 'pci/ac97/ak4531_codec.c', 'isa/sb/sb16_csp_codecs.h',
     	      'pci/korg1212/korg1212-firmware.h', 'pci/ymfpci/ymfpci_image.h',
     	      'isa/ad1848/ad1848_lib.c', 'isa/cs423x/cs4231_lib.c',
-    	      'include/cs4231.h']:
+    	      'include/cs4231.h', 'soc/at91/eti_b1_wm8731.c']:
         if isdir("alsa-kernel-repo/%s" % i):
             rmtree("alsa-kernel-repo/%s" % i)
         elif exists("alsa-kernel-repo/%s" % i):
