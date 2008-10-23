@@ -289,8 +289,8 @@ def do_check_commit(lines):
             elif line.startswith('Merge:') or line.startswith('Author:') or \
                  line.startswith('AuthorDate:') or line.startswith('Commit:') or \
                  line.startswith('CommitDate:'):
-                a, b = line.split(': ')
-                commit[a.strip()] = b.strip()
+                a = line.split(': ')
+                commit[a[0].strip()] = ': '.join(a[1:])
             elif line.startswith('    '):
                 header = False
         if line.startswith('    '):
