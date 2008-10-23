@@ -290,7 +290,7 @@ def do_check_commit(lines):
                  line.startswith('AuthorDate:') or line.startswith('Commit:') or \
                  line.startswith('CommitDate:'):
                 a = line.split(': ')
-                commit[a[0].strip()] = ': '.join(a[1:])
+                commit[a[0].strip()] = ': '.join(a[1:]).strip()
             elif line.startswith('    '):
                 header = False
         if line.startswith('    '):
