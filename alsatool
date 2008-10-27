@@ -924,7 +924,7 @@ def getorigin(repo = 'alsa-kernel'):
 		raise ValueError, "git.alsa-project.org is down?"
 	return origin
 
-def kmirrorcheck():
+def kmirrorcheck(argv):
 
 	def compare(commit1, commit2):
 		diff1 = os.popen("git diff %s~1..%s" % (commit1, commit1)).readlines()
@@ -965,6 +965,8 @@ def kmirrorcheck():
 			str = str[6:]
 		return str.strip()
 
+	full = argv and argv[0] == 'full'
+
 	print("Analyzing git-ok-commits..")
 	git_ok_commits = read_git_ok_commits()
 
@@ -978,12 +980,15 @@ def kmirrorcheck():
 	print("Found %s commits after v1.0.16" % len(kcommits))
 	
 	os.chdir(ROOT + '/alsa-kernel')
-	print("Looking for a common base...")
-	base = os.popen("git merge-base %s linux-2.6" % getorigin()).read(1024).strip()
-	if not base:
-		raise ValueError, "base"
-	print("Base is %s" % repr(base))
-	log1 = os.popen("git log --reverse --name-only --pretty=oneline --date=iso %s..linux-2.6" % base)
+	if full:
+		log1 = os.popen("git log --reverse --name-only --pretty=oneline --date=iso linux-2.6..master")
+	else:
+		print("Looking for a common base...")
+		base = os.popen("git merge-base %s linux-2.6" % getorigin()).read(1024).strip()
+		if not base:
+			raise ValueError, "base"
+		print("Base is %s" % repr(base))
+		log1 = os.popen("git log --reverse --name-only --pretty=oneline --date=iso %s..linux-2.6" % base)
 	last = ''
 	ok = False
 	commits = []
@@ -1043,6 +1048,7 @@ def kmirrormark(argv):
 		os.chdir(ROOT + '/alsa')
 		os.system("git add kernel-sync/git-ok-commits")
 		os.system("git commit -m \"%s\" -e" % ''.join(msg))
+		os.system("git push")
 
 def mailit(msg, subject):
 	from email.MIMEText import MIMEText
@@ -1093,10 +1099,10 @@ The following files will be updated:
 		if not line.startswith(' create mode'):
 			lines += line
 	lines += '\n'
-	lines += os.popen("git rev-list --no-merges --pretty=short linux-2.6..%s | git-shortlog" % branch).read(10*1024*1024)
+	lines += os.popen("git rev-list --no-merges --pretty=short linux-2.6..%s | git shortlog" % branch).read(10*1024*1024)
 	filename = tmpdir() + '/' + patch
 	if os.system("git diff -r linux-2.6..%s > %s" % (branch, filename)):
-		raise ValueError, "git-diff"
+		raise ValueError, "git diff"
 	if os.system("gzip -9 %s" % filename):
 		raise ValueError, "gzip"
 	if os.system("scp %s.gz root@alsa:/var/data/ftp/pub/kernel-patches" % filename):
@@ -1116,7 +1122,7 @@ def kimport(argv=None):
 	print 'Checking if a pull from the origin tree is required...'
 	rev = getorigin()
 	rev2 = os.popen("git merge-base %s master 2> /dev/null" % rev)
-	if rev2 == rev:
+	if not rev2 or rev2 == rev:
 		if os.system("git checkout master"):
 			raise ValueError, "git checkout master"
 		if os.system("git pull origin master"):
@@ -1158,7 +1164,7 @@ def kimport(argv=None):
 			raise ValueError, "git checkout master"
 		if import_([repo]):
 			raise ValueError, "import_ %s" % repo
-	kmirrorcheck()
+	kmirrorcheck(None)
 
 def compile0(repo):
 	from dircache import listdir
@@ -1223,7 +1229,7 @@ CMDS=[
         ['edit', edit, 'commit', 'Edit a message for commit'],
         ['remove', remove, 'commit', 'Remove a commit'],
         ['import', import_, 'branch', 'Import changes from a branch.\nRemove duplicate patches.'],
-        ['kmirrorcheck', kmirrorcheck, '', 'Check for already merged patches and fill git-ok-commits file.'],
+        ['kmirrorcheck', kmirrorcheck, '[full]', 'Check for already merged patches and fill git-ok-commits file.'],
         ['kmirrormark', kmirrormark, 'commit', 'Mark already merged patch to git-ok-commits file.'],
         ['kimport', kimport, '[remote/branch]', 'Import changes from Linus and Takashi to alsa-kernel.git.\nOr import changes from specified repository.'],
         ['tolinus', tolinus, 'branch', 'Send a merge request for given branch to linus'],
