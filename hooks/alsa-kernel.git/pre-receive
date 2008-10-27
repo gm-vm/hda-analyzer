@@ -384,7 +384,16 @@ def compare_trees(lastref):
     for i in ['oss', 'pci/ac97/ak4531_codec.c', 'isa/sb/sb16_csp_codecs.h',
     	      'pci/korg1212/korg1212-firmware.h', 'pci/ymfpci/ymfpci_image.h',
     	      'isa/ad1848/ad1848_lib.c', 'isa/cs423x/cs4231_lib.c',
-    	      'include/cs4231.h', 'soc/at91/eti_b1_wm8731.c']:
+    	      'include/cs4231.h', 'soc/at91/eti_b1_wm8731.c',
+    	      'aoa/codecs/snd-aoa-codec-onyx.c', 'aoa/codecs/snd-aoa-codec-onyx.h',
+    	      'aoa/codecs/snd-aoa-codec-tas-basstreble.h', 'aoa/codecs/snd-aoa-codec-tas-gain-table.h',
+    	      'aoa/codecs/snd-aoa-codec-tas.c', 'sound/aoa/codecs/snd-aoa-codec-tas.h',
+    	      'aoa/codecs/snd-aoa-codec-toonie.c', 'aoa/core/snd-aoa-alsa.c',
+    	      'aoa/core/snd-aoa-alsa.h', 'aoa/core/snd-aoa-core.c',
+    	      'aoa/core/snd-aoa-gpio-feature.c', 'aoa/core/snd-aoa-gpio-pmf.c',
+    	      'aoa/fabrics/snd-aoa-fabric-layout.c', 'aoa/soundbus/i2sbus/i2sbus-control.c',
+    	      'aoa/soundbus/i2sbus/i2sbus-core.c', 'aoa/soundbus/i2sbus/i2sbus-interface.h',
+    	      'aoa/soundbus/i2sbus/i2sbus-pcm.c']:
         if isdir("alsa-kernel-repo/%s" % i):
             rmtree("alsa-kernel-repo/%s" % i)
         elif exists("alsa-kernel-repo/%s" % i):
