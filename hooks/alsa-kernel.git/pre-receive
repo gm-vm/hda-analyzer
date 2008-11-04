@@ -394,7 +394,7 @@ def compare_trees(lastref):
     	      'aoa/fabrics/snd-aoa-fabric-layout.c', 'aoa/soundbus/i2sbus/i2sbus-control.c',
     	      'aoa/soundbus/i2sbus/i2sbus-core.c', 'aoa/soundbus/i2sbus/i2sbus-interface.h',
     	      'aoa/soundbus/i2sbus/i2sbus-pcm.c', 'aoa/codecs/snd-aoa-codec-tas.h',
-    	      'soc/at91/']:
+    	      'soc/at91/', 'soc/at32/']:
         if isdir("alsa-kernel-repo/%s" % i):
             rmtree("alsa-kernel-repo/%s" % i)
         elif exists("alsa-kernel-repo/%s" % i):
