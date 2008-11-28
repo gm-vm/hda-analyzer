@@ -17,7 +17,9 @@ import gtk
 import pango
 
 from dircache import listdir
-from hda_codec import HDACodec, HDANode, EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, PIN_WIDGET_CONTROL_VREF
+from hda_codec import HDACodec, HDANode, \
+                      EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
+                      PIN_WIDGET_CONTROL_VREF, DIG1_BITS
 
 PROC_DIR = '/proc/asound'
 
@@ -76,7 +78,7 @@ class HDAAnalyzer(gtk.Window):
     hbox.pack_start(self.notebook, expand=True)
     
     self.node_window = self.__create_node()
-    self._new_notebook_page(self.node_window, '_Node')
+    self._new_notebook_page(self.node_window, '_Node editor')
 
     scrolled_window, self.info_buffer = self.__create_text()
     self._new_notebook_page(scrolled_window, '_Text dump')
@@ -173,7 +175,7 @@ class HDAAnalyzer(gtk.Window):
     cell = gtk.CellRendererText()
     cell.set_property('style', pango.STYLE_ITALIC)
   
-    column = gtk.TreeViewColumn('Verb', cell, text=TITLE_COLUMN,
+    column = gtk.TreeViewColumn('Nodes', cell, text=TITLE_COLUMN,
                                 style_set=ITALIC_COLUMN)
   
     treeview.append_column(column)
@@ -285,10 +287,14 @@ class HDAAnalyzer(gtk.Window):
   def __build_amps(self, node):
 
     def build_caps(title, caps, vals):
+      if caps and caps.ofs == None:
+        caps = node.dir == HDA_INPUT and \
+                    node.codec.amp_caps_in or node.codec.amp_caps_out
+        title += ' (Global)'
       frame = gtk.Frame(title)
       frame.set_border_width(4)
       vbox = gtk.VBox(False, 0)
-      if caps and caps.ofs != None:
+      if caps:
         text_view = gtk.TextView()
         text_view.set_border_width(4)
         str = 'Offset:\t\t\t%d\n' % caps.ofs
@@ -322,6 +328,7 @@ class HDAAnalyzer(gtk.Window):
           if caps.stepsize > 0:
             adj = gtk.Adjustment((val & 0x7f) % caps.nsteps, 0.0, caps.nsteps, 1.0, 1.0, 1.0)
             scale = gtk.HScale(adj)
+            scale.set_digits(0)
             scale.set_value_pos(gtk.POS_RIGHT)
             adj.connect("value_changed", self.__amp_value_changed, (caps, vals, idx))
             hbox.pack_start(scale, True, True)
@@ -452,6 +459,94 @@ class HDAAnalyzer(gtk.Window):
     hbox.pack_start(vbox)
     return hbox
 
+  def __build_mix(self, node):
+    hbox = gtk.HBox(False, 0)
+    return hbox
+
+  def __sdi_select_changed(self, adj, node):
+    val = int(adj.get_value())
+    node.sdi_select_set_value(val)
+    adj.set_value(val)
+
+  def __dig1_toggled(self, button, data):
+    node, name = data
+    val = button.get_active()
+    node.dig1_set_value(name, val)
+
+  def __dig1_category_activate(self, entry, node):
+    val = entry.get_text()
+    if val.lower().startswith('0x'):
+      val = int(val[2:], 16)
+    else:
+      try:
+        val = int(val)
+      except:
+        print "Unknown category value '%s'" % val
+        return
+    node.dig1_set_value('category', val)
+    entry.set_text("0x%02x" % node.dig1_category)
+
+  def __build_aud(self, node):
+    vbox = gtk.VBox(False, 0)
+
+    frame = gtk.Frame('Converter')
+    frame.set_border_width(4)
+    text_view = gtk.TextView()
+    text_view.set_border_width(4)
+    str = 'Audio Stream:\t%s\n' % node.aud_stream
+    str += 'Audio Channel:\t%s\n' % node.aud_channel
+    if node.format_ovrd:
+      str += 'Rates:\t\t\t%s\n' % node.pcm_rates
+      str += 'Bits:\t\t\t%s\n' % node.pcm_bits
+      str += 'Streams:\t\t%s\n' % node.pcm_streams
+    else:
+      str += 'Global Rates:\t\t%s\n' % node.codec.pcm_rates
+      str += 'Global Bits:\t\t%s\n' % node.codec.pcm_bits
+      str += 'Global Streams:\t%s\n' % node.codec.pcm_streams
+    buffer = gtk.TextBuffer(None)
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, str)
+    text_view.set_buffer(buffer)
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
+    frame.add(text_view)
+    vbox.pack_start(frame)
+
+    hbox1 = gtk.HBox(False, 0)
+    if node.sdi_select != None:
+      frame = gtk.Frame('SDI Select')
+      adj = gtk.Adjustment(node.sdi_select, 0.0, 16.0, 1.0, 1.0, 1.0)
+      scale = gtk.HScale(adj)
+      scale.set_digits(0)
+      scale.set_value_pos(gtk.POS_LEFT)
+      scale.set_size_request(200, 16)
+      adj.connect("value_changed", self.__sdi_select_changed, node)
+      frame.add(scale)
+      hbox1.pack_start(frame, False, False)
+      vbox.pack_start(hbox1, False, False)
+
+    if node.digital:
+      hbox1 = gtk.HBox(False, 0)
+      frame = gtk.Frame('Digital Converter')
+      vbox1 = gtk.VBox(False, 0)
+      for name in DIG1_BITS:
+        checkbutton = gtk.CheckButton(name)
+        checkbutton.set_active(node.digi1 & (1 << DIG1_BITS[name]))
+        checkbutton.connect("toggled", self.__dig1_toggled, (node, name))
+        vbox1.pack_start(checkbutton, False, False)
+      frame.add(vbox1)
+      hbox1.pack_start(frame)
+      frame = gtk.Frame('Digital Converter Category')
+      entry = gtk.Entry()
+      entry.set_text("0x%x" % node.dig1_category)
+      entry.set_width_chars(4)
+      entry.connect("activate", self.__dig1_category_activate, node)
+      frame.add(entry)
+      hbox1.pack_start(frame)
+      vbox.pack_start(hbox1, False, False)
+
+    return vbox
+
   def __build_node(self, node):
     w = self.node_window
 
@@ -463,17 +558,17 @@ class HDAAnalyzer(gtk.Window):
     hbox.pack_start(self.__build_node_caps(node))
     hbox.pack_start(self.__build_connection_list(node))
     vbox.pack_start(hbox, False, False)
-    vbox.pack_start(self.__build_amps(node), False, False)
+    if node.in_amp or node.out_amp:
+      vbox.pack_start(self.__build_amps(node), False, False)
+    if node.wtype_id == 'AUD_MIX':
+      vbox.pack_start(self.__build_mix(node), False, False)      
     if node.wtype_id == 'PIN':
       vbox.pack_start(self.__build_pin(node), False, False)
-
-    #mtable = gtk.Table(2, 2, True)
-    #
-    #mtable.attach(self.__build_node_caps(node), 0, 1, 0, 1)
-    #mtable.attach(self.__build_connection_list(node), 1, 2, 0, 1)
-    #mtable.attach(self.__build_amps(node), 0, 2, 1, 2)
-    #if node.wtype_id == 'PIN':
-    #  mtable.attach(self.__build_pin(node), 0, 2, 2, 3)
+    elif node.wtype_id in ['AUD_IN', 'AUD_OUT']:
+      vbox.pack_start(self.__build_aud(node), False, False)      
+    else:
+      if not node.wtype_id in ['AUD_MIX', 'BEEP', 'AUD_SEL']:
+        print 'Node type %s has no GUI support' % node.wtype_id
 
     mframe.add(vbox)
     w.add_with_viewport(mframe)

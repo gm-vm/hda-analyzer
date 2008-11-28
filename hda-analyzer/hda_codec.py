@@ -563,15 +563,17 @@ class HDANode:
 
   def dig1_set_value(self, name, value):
     if name == 'category':
-      self.digi1 &= 0x7f00
+      self.digi1 &= ~0x7f00
       self.digi1 |= (value & 0x7f) << 8
+      self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_2'], (self.digi1 >> 8) & 0xff)
     else:
-      mask = DIG1_BITS[name]
+      mask = 1 << DIG1_BITS[name]
       if value:
         self.digi1 |= mask
       else:
         self.digi1 &= ~mask
-    self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_1'], self.digi1)
+      self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_1'], self.digi1 & 0xff)
+    self.reread_dig1()
     
 
 class HDAGPIO:
