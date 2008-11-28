@@ -79,7 +79,7 @@ class HDAAnalyzer(gtk.Window):
     self._new_notebook_page(self.node_window, '_Node')
 
     scrolled_window, self.info_buffer = self.__create_text()
-    self._new_notebook_page(scrolled_window, '_Text info')
+    self._new_notebook_page(scrolled_window, '_Text dump')
 
     self.show_all()    
 
@@ -244,7 +244,7 @@ class HDAAnalyzer(gtk.Window):
     #sw.set_shadow_type(gtk.SHADOW_ETCHED_IN)
     sw.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
     frame.add(sw)
-    if node.conn_list:
+    if node.conn_list and node.connections:
       model = gtk.ListStore(
         gobject.TYPE_BOOLEAN,
         gobject.TYPE_STRING
@@ -288,7 +288,7 @@ class HDAAnalyzer(gtk.Window):
       frame = gtk.Frame(title)
       frame.set_border_width(4)
       vbox = gtk.VBox(False, 0)
-      if caps:
+      if caps and caps.ofs != None:
         text_view = gtk.TextView()
         text_view.set_border_width(4)
         str = 'Offset:\t\t\t%d\n' % caps.ofs
