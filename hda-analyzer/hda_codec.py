@@ -757,7 +757,7 @@ class HDACodec:
     if stream & 0x04: res.append("AC3")
     return res
 
-  def dump(self):
+  def dump(self, skip_nodes=False):
 
     def print_pcm_rates(node):
       s = ''
@@ -826,12 +826,13 @@ class HDACodec:
       return str
     
     str += print_gpio(self)
-    
-    nid = self.base_nid
-    for i in range(self.nodes):
-      s, n = self.dump_node(nid)
-      str += s
-      nid += 1
+
+    if not skip_nodes:
+      nid = self.base_nid
+      for i in range(self.nodes):
+        s, n = self.dump_node(nid)
+        str += s
+        nid += 1
     
     return str
 

@@ -52,6 +52,8 @@ def read_verbs():
 class HDAAnalyzer(gtk.Window):
   info_buffer = None
   node_window = None
+  codec = None
+  node = None
 
   def __init__(self, parent=None):
     gtk.Window.__init__(self)
@@ -80,10 +82,26 @@ class HDAAnalyzer(gtk.Window):
     self.node_window = self.__create_node()
     self._new_notebook_page(self.node_window, '_Node editor')
 
-    scrolled_window, self.info_buffer = self.__create_text()
+    scrolled_window, self.info_buffer = self.__create_text(self.__dump_visibility)
     self._new_notebook_page(scrolled_window, '_Text dump')
 
     self.show_all()    
+
+  def __dump_visibility(self, textview, event):
+    codec = self.codec
+    node = self.node
+    if not codec:
+      txt = 'Show some card info here...'
+    elif codec and self.node < 0:
+      txt = codec.dump(skip_nodes=True)
+    else:
+      txt, n = codec.dump_node(node)
+    buffer = self.info_buffer
+    start, end = buffer.get_bounds()
+    buffer.delete(start, end)
+    if not txt: return
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, txt)
 
   def selection_changed_cb(self, selection):
     model, iter = selection.get_selected()
@@ -92,17 +110,20 @@ class HDAAnalyzer(gtk.Window):
     card = model.get_value(iter, CARD_COLUMN)
     codec = model.get_value(iter, CODEC_COLUMN)
     node = model.get_value(iter, NODE_COLUMN)
-    c = None
+    self.codec = None
     if codec >= 0:
-      c = CODEC_TREE[card][codec]
-    self.load(c, node)
+      self.codec = CODEC_TREE[card][codec]
+    self.node = node
+    self.load()
 
-  def load(self, codec, node):
+  def load(self):
+    codec = self.codec
+    node = self.node
     n = None    
     if not codec:
       txt = 'Show some card info here...'
     elif codec and node < 0:
-      txt = codec.dump()
+      txt = codec.dump(skip_nodes=True)
     else:
       txt, n = codec.dump_node(node)
     buffer = self.info_buffer
@@ -186,7 +207,7 @@ class HDAAnalyzer(gtk.Window):
   
     return treeview
 
-  def __create_text(self):
+  def __create_text(self, callback):
     scrolled_window = gtk.ScrolledWindow()
     scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
     scrolled_window.set_shadow_type(gtk.SHADOW_IN)
@@ -198,6 +219,7 @@ class HDAAnalyzer(gtk.Window):
     text_view.set_buffer(buffer)
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
+    text_view.connect("visibility-notify-event", callback)
     
     text_view.set_wrap_mode(True)
     
@@ -261,6 +283,7 @@ class HDAAnalyzer(gtk.Window):
       treeview = gtk.TreeView(model)
       treeview.set_rules_hint(True)
       treeview.get_selection().set_mode(gtk.SELECTION_SINGLE)
+      treeview.set_size_request(300, 30 + len(node.connections) * 25)
       renderer = gtk.CellRendererToggle()
       renderer.set_radio(True)
       if node.active_connection != None:
@@ -277,12 +300,13 @@ class HDAAnalyzer(gtk.Window):
     caps, vals, idx = data
     val = button.get_active()
     vals.set_mute(idx, val)
+    button.set_active(vals.vals[idx] & 0x80)
 
   def __amp_value_changed(self, adj, data):
     caps, vals, idx = data
     val = int(adj.get_value())
     vals.set_value(idx, val)
-    adj.set_value(val)
+    adj.set_value(vals.vals[idx] & 0x7f)
 
   def __build_amps(self, node):
 
@@ -355,10 +379,12 @@ class HDAAnalyzer(gtk.Window):
   def __pincap_eapdbtl_toggled(self, button, data):
     node, name = data
     node.eapdbtl_set_value(name, button.get_active())
+    button.set_active(name in node.pincap_eapdbtl)
 
   def __pinctls_toggled(self, button, data):
     node, name = data
     node.pin_widget_control_set_value(name, button.get_active())
+    button.set_active(name in node.pinctl)
 
   def __pinctls_vref_change(self, combobox, node):
     index = combobox.get_active()
@@ -369,6 +395,13 @@ class HDAAnalyzer(gtk.Window):
         node.pin_widget_control_set_value('vref', name)
         break
       idx1 += 1
+    idx = idx1 = 0
+    for name in PIN_WIDGET_CONTROL_VREF:
+      if name == node.pinctl_vref:
+        combobox.set_active(idx1)
+        break
+      if name != None:
+        idx1 += 1
 
   def __build_pin(self, node):
     hbox = gtk.HBox(False, 0)
@@ -466,12 +499,14 @@ class HDAAnalyzer(gtk.Window):
   def __sdi_select_changed(self, adj, node):
     val = int(adj.get_value())
     node.sdi_select_set_value(val)
-    adj.set_value(val)
+    print node.sdi_select
+    adj.set_value(node.sdi_select)
 
   def __dig1_toggled(self, button, data):
     node, name = data
     val = button.get_active()
     node.dig1_set_value(name, val)
+    button.set_active(name in node.dig1)
 
   def __dig1_category_activate(self, entry, node):
     val = entry.get_text()
@@ -496,11 +531,15 @@ class HDAAnalyzer(gtk.Window):
     str = 'Audio Stream:\t%s\n' % node.aud_stream
     str += 'Audio Channel:\t%s\n' % node.aud_channel
     if node.format_ovrd:
-      str += 'Rates:\t\t\t%s\n' % node.pcm_rates
+      str += 'Rates:\t\t\t%s\n' % node.pcm_rates[:6]
+      if len(node.pcm_rates) > 6:
+        str += '\t\t\t\t%s\n' % node.pcm_rates[6:]
       str += 'Bits:\t\t\t%s\n' % node.pcm_bits
       str += 'Streams:\t\t%s\n' % node.pcm_streams
     else:
-      str += 'Global Rates:\t\t%s\n' % node.codec.pcm_rates
+      str += 'Global Rates:\t\t%s\n' % node.codec.pcm_rates[:6]
+      if len(node.codec.pcm_rates) > 6:
+        str += '\t\t\t\t%s\n' % node.codec.pcm_rates[6:]
       str += 'Global Bits:\t\t%s\n' % node.codec.pcm_bits
       str += 'Global Streams:\t%s\n' % node.codec.pcm_streams
     buffer = gtk.TextBuffer(None)
@@ -560,12 +599,10 @@ class HDAAnalyzer(gtk.Window):
     vbox.pack_start(hbox, False, False)
     if node.in_amp or node.out_amp:
       vbox.pack_start(self.__build_amps(node), False, False)
-    if node.wtype_id == 'AUD_MIX':
-      vbox.pack_start(self.__build_mix(node), False, False)      
     if node.wtype_id == 'PIN':
       vbox.pack_start(self.__build_pin(node), False, False)
     elif node.wtype_id in ['AUD_IN', 'AUD_OUT']:
-      vbox.pack_start(self.__build_aud(node), False, False)      
+      vbox.pack_start(self.__build_aud(node), False, False)
     else:
       if not node.wtype_id in ['AUD_MIX', 'BEEP', 'AUD_SEL']:
         print 'Node type %s has no GUI support' % node.wtype_id
