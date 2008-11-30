@@ -19,7 +19,7 @@ import pango
 from dircache import listdir
 from hda_codec import HDACodec, HDANode, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
-                      PIN_WIDGET_CONTROL_VREF, DIG1_BITS
+                      PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS
 
 PROC_DIR = '/proc/asound'
 
@@ -137,9 +137,12 @@ class HDAAnalyzer(gtk.Window):
       self.node_window.remove(child)
 
     if not n:
-      return
-
-    self.__build_node(n)
+      if codec:
+        self.__build_codec(codec)
+      else:
+        return
+    else:
+      self.__build_node(n)
     self.node_window.show_all()
 
   def _new_notebook_page(self, widget, label):
@@ -213,6 +216,8 @@ class HDAAnalyzer(gtk.Window):
     scrolled_window.set_shadow_type(gtk.SHADOW_IN)
     
     text_view = gtk.TextView()
+    fontName = pango.FontDescription("Misc Fixed,Courier Bold 9")
+    text_view.modify_font(fontName)
     scrolled_window.add(text_view)
     
     buffer = gtk.TextBuffer(None)
@@ -231,19 +236,25 @@ class HDAAnalyzer(gtk.Window):
     scrolled_window.set_shadow_type(gtk.SHADOW_IN)    
     return scrolled_window
 
+  def __new_text_view(self):
+    text_view = gtk.TextView()
+    text_view.set_border_width(4)
+    fontName = pango.FontDescription("Misc Fixed,Courier Bold 9")
+    text_view.modify_font(fontName)
+    return text_view
+
   def __build_node_caps(self, node):
     frame = gtk.Frame('Node Caps')
     frame.set_border_width(4)
     if len(node.wcaps_list) == 0:
       return frame
-    text_view = gtk.TextView()
-    text_view.set_border_width(4)
+    text_view = self.__new_text_view()
     str = ''
     for i in node.wcaps_list:
       str += node.wcap_name(i) + '\n'
     buffer = gtk.TextBuffer(None)
     iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str)
+    buffer.insert(iter, str[:-1])
     text_view.set_buffer(buffer)
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
@@ -319,15 +330,14 @@ class HDAAnalyzer(gtk.Window):
       frame.set_border_width(4)
       vbox = gtk.VBox(False, 0)
       if caps:
-        text_view = gtk.TextView()
-        text_view.set_border_width(4)
-        str = 'Offset:\t\t\t%d\n' % caps.ofs
-        str += 'Number of steps:\t%d\n' % caps.nsteps
-        str += 'Step size:\t\t%d\n' % caps.stepsize
-        str += 'Mute:\t\t\t%s\n' % (caps.mute and "True" or "False")
+        text_view = self.__new_text_view()
+        str =  'Offset:          %d\n' % caps.ofs
+        str += 'Number of steps: %d\n' % caps.nsteps
+        str += 'Step size:       %d\n' % caps.stepsize
+        str += 'Mute:            %s\n' % (caps.mute and "True" or "False")
         buffer = gtk.TextBuffer(None)
         iter = buffer.get_iter_at_offset(0)
-        buffer.insert(iter, str)
+        buffer.insert(iter, str[:-1])
         text_view.set_buffer(buffer)
         text_view.set_editable(False)
         text_view.set_cursor_visible(False)
@@ -411,8 +421,7 @@ class HDAAnalyzer(gtk.Window):
       if node.pincap or node.pincap_vref:
         frame = gtk.Frame('PIN Caps')
         frame.set_border_width(4)
-        text_view = gtk.TextView()
-        text_view.set_border_width(4)
+        text_view = self.__new_text_view()
         str = ''
         for i in node.pincap:
           str += node.pincap_name(i) + '\n'
@@ -420,7 +429,7 @@ class HDAAnalyzer(gtk.Window):
           str += 'VREF_%s\n' % i
         buffer = gtk.TextBuffer(None)
         iter = buffer.get_iter_at_offset(0)
-        buffer.insert(iter, str)
+        buffer.insert(iter, str[:-1])
         text_view.set_buffer(buffer)
         text_view.set_editable(False)
         text_view.set_cursor_visible(False)
@@ -443,19 +452,18 @@ class HDAAnalyzer(gtk.Window):
 
     frame = gtk.Frame('Config Default')
     frame.set_border_width(4)
-    text_view = gtk.TextView()
-    text_view.set_border_width(4)
-    str = 'Jack connection:\t%s\n' % node.jack_conn_name
-    str += 'Jack type:\t\t%s\n' % node.jack_type_name
-    str += 'Jack location:\t\t%s\n' % node.jack_location_name
-    str += 'Jack location2:\t%s\n' % node.jack_location2_name
-    str += 'Jack connector:\t%s\n' % node.jack_connector_name
-    str += 'Jack color:\t\t%s\n' % node.jack_color_name
+    text_view = self.__new_text_view()
+    str =  'Jack connection: %s\n' % node.jack_conn_name
+    str += 'Jack type:       %s\n' % node.jack_type_name
+    str += 'Jack location:   %s\n' % node.jack_location_name
+    str += 'Jack location2:  %s\n' % node.jack_location2_name
+    str += 'Jack connector:  %s\n' % node.jack_connector_name
+    str += 'Jack color:      %s\n' % node.jack_color_name
     if 'NO_PRESENCE' in node.defcfg_misc:
       str += 'No presence\n'
     buffer = gtk.TextBuffer(None)
     iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str)
+    buffer.insert(iter, str[:-1])
     text_view.set_buffer(buffer)
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
@@ -499,7 +507,6 @@ class HDAAnalyzer(gtk.Window):
   def __sdi_select_changed(self, adj, node):
     val = int(adj.get_value())
     node.sdi_select_set_value(val)
-    print node.sdi_select
     adj.set_value(node.sdi_select)
 
   def __dig1_toggled(self, button, data):
@@ -526,25 +533,24 @@ class HDAAnalyzer(gtk.Window):
 
     frame = gtk.Frame('Converter')
     frame.set_border_width(4)
-    text_view = gtk.TextView()
-    text_view.set_border_width(4)
+    text_view = self.__new_text_view()
     str = 'Audio Stream:\t%s\n' % node.aud_stream
     str += 'Audio Channel:\t%s\n' % node.aud_channel
     if node.format_ovrd:
-      str += 'Rates:\t\t\t%s\n' % node.pcm_rates[:6]
+      str += 'Rates:\t\t%s\n' % node.pcm_rates[:6]
       if len(node.pcm_rates) > 6:
         str += '\t\t\t\t%s\n' % node.pcm_rates[6:]
-      str += 'Bits:\t\t\t%s\n' % node.pcm_bits
-      str += 'Streams:\t\t%s\n' % node.pcm_streams
+      str += 'Bits:\t\t%s\n' % node.pcm_bits
+      str += 'Streams:\t%s\n' % node.pcm_streams
     else:
-      str += 'Global Rates:\t\t%s\n' % node.codec.pcm_rates[:6]
+      str += 'Global Rates:\t%s\n' % node.codec.pcm_rates[:6]
       if len(node.codec.pcm_rates) > 6:
-        str += '\t\t\t\t%s\n' % node.codec.pcm_rates[6:]
-      str += 'Global Bits:\t\t%s\n' % node.codec.pcm_bits
+        str += '\t\t%s\n' % node.codec.pcm_rates[6:]
+      str += 'Global Bits:\t%s\n' % node.codec.pcm_bits
       str += 'Global Streams:\t%s\n' % node.codec.pcm_streams
     buffer = gtk.TextBuffer(None)
     iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str)
+    buffer.insert(iter, str[:-1])
     text_view.set_buffer(buffer)
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
@@ -609,7 +615,123 @@ class HDAAnalyzer(gtk.Window):
 
     mframe.add(vbox)
     w.add_with_viewport(mframe)
+
+  def __build_codec_info(self, codec):
+    vbox = gtk.VBox(False, 0)
+
+    frame = gtk.Frame('Codec Identification')
+    frame.set_border_width(4)
+    text_view = self.__new_text_view()
+    str = 'Audio Fcn Group: %s\n' % (codec.afg and "0x%02x" % codec.afg or "N/A")
+    str += 'Modem Fcn Group: %s\n' % (codec.mfg and "0x%02x" % codec.mfg or "N/A")
+    str += 'Vendor ID:\t 0x%08x\n' % codec.vendor_id
+    str += 'Subsystem ID:\t 0x%08x\n' % codec.subsystem_id
+    str += 'Revision ID:\t 0x%08x\n' % codec.revision_id
+    buffer = gtk.TextBuffer(None)
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, str[:-1])
+    text_view.set_buffer(buffer)
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
+    frame.add(text_view)
+    vbox.pack_start(frame, False, False)
+
+    frame = gtk.Frame('PCM Global Capabilities')
+    frame.set_border_width(4)
+    text_view = self.__new_text_view()
+    str = 'Rates:\t\t %s\n' % codec.pcm_rates[:6]
+    if len(codec.pcm_rates) > 6:
+      str += '\t\t %s\n' % codec.pcm_rates[6:]
+    str += 'Bits:\t\t %s\n' % codec.pcm_bits
+    str += 'Streams:\t %s\n' % codec.pcm_streams
+    buffer = gtk.TextBuffer(None)
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, str[:-1])
+    text_view.set_buffer(buffer)
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
+    frame.add(text_view)
+    vbox.pack_start(frame, False, False)
+
+    return vbox
     
+  def __build_codec_amps(self, codec):
+
+    def build_caps(title, caps):
+      frame = gtk.Frame(title)
+      frame.set_border_width(4)
+      if caps:
+        text_view = self.__new_text_view()
+        str = 'Offset:\t\t %d\n' % caps.ofs
+        str += 'Number of steps: %d\n' % caps.nsteps
+        str += 'Step size:\t %d\n' % caps.stepsize
+        str += 'Mute:\t\t %s\n' % (caps.mute and "True" or "False")
+        buffer = gtk.TextBuffer(None)
+        iter = buffer.get_iter_at_offset(0)
+        buffer.insert(iter, str[:-1])
+        text_view.set_buffer(buffer)
+        text_view.set_editable(False)
+        text_view.set_cursor_visible(False)
+        frame.add(text_view)
+      return frame
+
+    hbox = gtk.HBox(False, 0)
+    c = build_caps('Global Input Amplifier Caps', codec.amp_caps_in)
+    hbox.pack_start(c)
+    c = build_caps('Global Output Amplifier Caps',codec.amp_caps_out)
+    hbox.pack_start(c)
+
+    return hbox
+
+  def __gpio_toggled(self, button, (codec, id, idx)):
+    codec.gpio.set(id, idx, button.get_active())
+    button.set_active(codec.gpio.test(id, idx))
+
+  def __build_codec_gpio(self, codec):
+    frame = gtk.Frame('GPIO')
+    frame.set_border_width(4)
+    hbox = gtk.HBox(False, 0)
+    text_view = self.__new_text_view()
+    str =  'IO Count:    %d\n' % codec.gpio_max
+    str += 'O Count:     %d\n' % codec.gpio_o
+    str += 'I Count:     %d\n' % codec.gpio_i
+    str += 'Unsolicited: %s\n' % (codec.gpio_unsol and "True" or "False")
+    str += 'Wake:        %s\n' % (codec.gpio_wake and "True" or "False")
+    buffer = gtk.TextBuffer(None)
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, str[:-1])
+    text_view.set_buffer(buffer)
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
+    hbox.pack_start(text_view, False, False)
+    frame.add(hbox)
+    for id in GPIO_IDS:
+      id1 = id == 'direction' and 'out-dir' or id
+      frame1 = gtk.Frame(id1)
+      frame1.set_border_width(4)
+      vbox1 = gtk.VBox(False, 0)
+      for i in range(codec.gpio_max):
+        checkbutton = gtk.CheckButton('[%d]' % i)
+        checkbutton.set_active(codec.gpio.test(id, i))
+        checkbutton.connect("toggled", self.__gpio_toggled, (codec, id, i))
+        vbox1.pack_start(checkbutton, False, False)
+      frame1.add(vbox1)
+      hbox.pack_start(frame1, False, False)
+    return frame
+
+  def __build_codec(self, codec):
+    w = self.node_window
+
+    mframe = gtk.Frame(codec.name)
+    mframe.set_border_width(4)
+
+    vbox = gtk.VBox(False, 0)
+    vbox.pack_start(self.__build_codec_info(codec), False, False)
+    vbox.pack_start(self.__build_codec_amps(codec), False, False)
+    vbox.pack_start(self.__build_codec_gpio(codec), False, False)
+    mframe.add(vbox)
+    w.add_with_viewport(mframe)
+
 def main():
   read_verbs()
   HDAAnalyzer()

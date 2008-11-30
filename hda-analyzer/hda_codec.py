@@ -592,17 +592,18 @@ class HDAGPIO:
     return (self.val[name] & (1 << bit)) and True or False
 
   def read(self, name):
-    self.val[i] = self.codec.rw(nid, GPIO_IDS[name][0], 0)
+    self.val[name] = self.codec.rw(self.nid, GPIO_IDS[name][0], 0)
 
   def write(self, name):
-    self.val[i] = self.codec.rw(nid, GPIO_IDS[name][1], self.val[i])
+    self.codec.rw(self.nid, GPIO_IDS[name][1], self.val[name])
+    self.read(name)
 
   def set(self, name, bit, val):
     old = self.test(name, bit)
     if val:
       self.val[name] |= 1 << bit
     else:
-      self.val[name] &= 1 << bit
+      self.val[name] &= ~(1 << bit)
     if old == self.test(name, bit):
       return
     self.write(name)
@@ -695,6 +696,7 @@ class HDACodec:
     self.vendor_id = self.param_read(AC_NODE_ROOT, PARAMS['VENDOR_ID'])
     self.subsystem_id = self.param_read(AC_NODE_ROOT, PARAMS['SUBSYSTEM_ID'])
     self.revision_id = self.param_read(AC_NODE_ROOT, PARAMS['REV_ID'])
+    self.name = "0x%08x" % self.vendor_id	# FIXME
 
     total, nid = self.get_sub_nodes(AC_NODE_ROOT)
     for i in range(total):
