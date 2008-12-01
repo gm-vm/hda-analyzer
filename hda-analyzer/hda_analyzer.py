@@ -16,25 +16,32 @@ import gobject
 import gtk
 import pango
 
+DIFF_FILE = "/tmp/hda-analyze.diff"
+
 from dircache import listdir
 from hda_codec import HDACodec, HDA_card_list, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS
 
 CODEC_TREE = {}
+DIFF_TREE = {}
 
 def read_nodes2(card, codec):
   try:
     c = HDACodec(card, codec)
   except OSError, msg:
+    if msg[0] == 16:
+      print "Codec %i/%i is busy..." % (card, codec)
     return
   c.analyze()
   CODEC_TREE[card][codec] = c
+  DIFF_TREE[card][codec] = c.dump()
 
 def read_nodes():
   l = HDA_card_list()
   for c in l:
     CODEC_TREE[c.card] = {}
+    DIFF_TREE[c.card] = {}
     for i in range(4):
       read_nodes2(c.card, i)
   cnt = 0
@@ -42,6 +49,22 @@ def read_nodes():
     if len(CODEC_TREE[c.card]) > 0:
       cnt += 1
   return cnt    
+
+def do_diff1(codec, diff1, out=True):
+  from difflib import unified_diff
+  diff = unified_diff(diff1.split('\n'), codec.dump().split('\n'), n=8, lineterm='')
+  diff = '\n'.join(list(diff))
+  if out and len(diff) > 0:
+    open(DIFF_FILE, "w+").write(diff)
+    print "Diff was stored to: %s" % DIFF_FILE
+  return diff
+
+def do_diff():
+  res = ''
+  for card in CODEC_TREE:
+    for codec in CODEC_TREE[card]:
+      res += do_diff1(CODEC_TREE[card][codec], DIFF_TREE[card][codec])
+  return res
 
 (
     TITLE_COLUMN,
@@ -86,6 +109,10 @@ class HDAAnalyzer(gtk.Window):
     button.connect("clicked", self.__revert_clicked)
     self.tooltips.set_tip(button, "Revert settings for selected codec.")
     hbox1.pack_start(button)
+    button = gtk.Button("Diff")
+    button.connect("clicked", self.__diff_clicked)
+    self.tooltips.set_tip(button, "Show settings diff for selected codec.")
+    hbox1.pack_start(button)
     vbox.pack_start(hbox1, False, False)
     hbox.pack_start(vbox, False, False)
     
@@ -101,26 +128,27 @@ class HDAAnalyzer(gtk.Window):
     self.show_all()    
 
   def __destroy(self, widget):
-    dialog = gtk.MessageDialog(self,
+    if do_diff():	
+      dialog = gtk.MessageDialog(self,
                       gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
                       gtk.MESSAGE_QUESTION, gtk.BUTTONS_YES_NO,
                       "HDA-Analyzer: Would you like to revert\n"
                       "settings for all HDA codecs?")
-    response = dialog.run()
-    dialog.destroy()
+      response = dialog.run()
+      dialog.destroy()
     
-    if response == gtk.RESPONSE_YES:
-      for card in CODEC_TREE:
-        for codec in CODEC_TREE[card]:
-          CODEC_TREE[card][codec].revert()
-      print "Settings for all codecs were reverted..."
+      if response == gtk.RESPONSE_YES:
+        for card in CODEC_TREE:
+          for codec in CODEC_TREE[card]:
+            CODEC_TREE[card][codec].revert()
+        print "Settings for all codecs were reverted..."
     
     gtk.main_quit()
 
   def __about_clicked(self, button):
     dialog = gtk.Dialog('About', self,
                         gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-                        gtk.BUTTONS_OK)
+                        (gtk.STOCK_OK, gtk.RESPONSE_OK))
     text_view = gtk.TextView()
     text_view.set_border_width(4)
     str =  """\
@@ -162,6 +190,28 @@ mailing list - http://www.alsa-project.org .
     dialog.run()
     dialog.destroy()
 
+  def __diff_clicked(self, button):
+    if not self.codec:
+      return
+    dialog = gtk.Dialog('Diff', self,
+                        gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                        (gtk.STOCK_OK, gtk.RESPONSE_OK))
+    text_view = gtk.TextView()
+    text_view.set_border_width(4)
+    str = do_diff1(self.codec, DIFF_TREE[self.card][self.codec.device], out=False)
+    if str == '':
+      str = 'No changes'
+    buffer = gtk.TextBuffer(None)
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, str[:-1])
+    text_view.set_buffer(buffer)
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
+    dialog.vbox.pack_start(text_view, False, False)
+    dialog.show_all()
+    dialog.run()
+    dialog.destroy()
+    
   def __refresh(self):
     self.load()
     self.__dump_visibility(None, None)
@@ -436,7 +486,7 @@ mailing list - http://www.alsa-project.org .
             checkbutton.connect("toggled", self.__amp_mute_toggled, (caps, vals, idx))
             hbox.pack_start(checkbutton, False, False)
           if caps.stepsize > 0:
-            adj = gtk.Adjustment((val & 0x7f) % caps.nsteps, 0.0, caps.nsteps, 1.0, 1.0, 1.0)
+            adj = gtk.Adjustment((val & 0x7f) % (caps.nsteps+1), 0.0, caps.nsteps+1, 1.0, 1.0, 1.0)
             scale = gtk.HScale(adj)
             scale.set_digits(0)
             scale.set_value_pos(gtk.POS_RIGHT)
@@ -840,7 +890,7 @@ def main():
     print "/dev/snd/controlC* and /dev/snd/hwdepC*D* device files."
     print
     print "You may also check, if you compiled HDA driver with HWDEP"
-    print "interface as well."
+    print "interface as well or close all application using HWDEP."
     print
     print "Try run this program as root user."
   else:

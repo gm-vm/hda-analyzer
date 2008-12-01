@@ -939,8 +939,9 @@ class HDACodec:
     
     str += print_gpio(self)
 
-    for i in self.nodes:
-      self.dump_node(self.nodes[i])
+    if not skip_nodes:
+      for i in self.nodes:
+        str += self.dump_node(self.nodes[i])
     
     return str
 
