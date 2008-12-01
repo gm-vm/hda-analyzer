@@ -37,6 +37,11 @@ def read_nodes():
     CODEC_TREE[c.card] = {}
     for i in range(4):
       read_nodes2(c.card, i)
+  cnt = 0
+  for c in l:
+    if len(CODEC_TREE[c.card]) > 0:
+      cnt += 1
+  return cnt    
 
 (
     TITLE_COLUMN,
@@ -62,16 +67,30 @@ class HDAAnalyzer(gtk.Window):
     self.set_title(self.__class__.__name__)
     self.set_border_width(10)
 
+    self.tooltips = gtk.Tooltips()
+
     hbox = gtk.HBox(False, 3)
     self.add(hbox)
     
+    vbox = gtk.VBox(False, 0)
     scrolled_window = gtk.ScrolledWindow()
     scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
     scrolled_window.set_shadow_type(gtk.SHADOW_IN)
     treeview = self.__create_treeview()
     treeview.set_size_request(250, 600)
     scrolled_window.add(treeview)
-    hbox.pack_start(scrolled_window, False, False)
+    vbox.pack_start(scrolled_window)
+    hbox1 = gtk.HBox(False, 0)
+    button = gtk.Button("About")
+    button.connect("clicked", self.__about_clicked)
+    self.tooltips.set_tip(button, "README! Show the purpose of this program.")
+    hbox1.pack_start(button)
+    button = gtk.Button("Revert")
+    button.connect("clicked", self.__revert_clicked)
+    self.tooltips.set_tip(button, "Revert settings for all codecs.")
+    hbox1.pack_start(button)
+    vbox.pack_start(hbox1, False, False)
+    hbox.pack_start(vbox, False, False)
     
     self.notebook = gtk.Notebook()
     hbox.pack_start(self.notebook, expand=True)
@@ -83,6 +102,43 @@ class HDAAnalyzer(gtk.Window):
     self._new_notebook_page(scrolled_window, '_Text dump')
 
     self.show_all()    
+
+  def __about_clicked(self, button):
+    dialog = gtk.Dialog('About', self,
+                        gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                          (gtk.STOCK_OK, gtk.RESPONSE_OK))
+    text_view = gtk.TextView()
+    text_view.set_border_width(4)
+    str =  """\
+HDA Analyzer
+
+This tool allows change the HDA codec setting using direct hardware access
+bypassing driver's mixer layer.
+
+To learn more about HDA (High Definition Audio), see
+http://www.intel.com/standards/hdaudio/ for more details.
+
+Please, if you find how your codec work, send this information to alsa-devel
+mailing list - http://www.alsa-project.org .
+"""
+    buffer = gtk.TextBuffer(None)
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, str[:-1])
+    text_view.set_buffer(buffer)
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
+    dialog.vbox.pack_start(text_view, False, False)
+    dialog.show_all()
+    dialog.run()
+    dialog.destroy()
+    
+  def __revert_clicked(self, button):
+    self.__refresh()
+    pass
+
+  def __refresh(self):
+    self.load()
+    self.__dump_visibility(None, None)
 
   def __dump_visibility(self, textview, event):
     codec = self.codec
@@ -762,9 +818,14 @@ class HDAAnalyzer(gtk.Window):
     w.add_with_viewport(mframe)
 
 def main():
-  read_nodes()
-  HDAAnalyzer()
-  gtk.main()
+  if read_nodes() == 0:
+    print "No HDA codecs were found or insufficient priviledges for "
+    print "/dev/snd/controlC* and /dev/snd/hwdepC*D* device files."
+    print
+    print "Try run this program as root user."
+  else:
+    HDAAnalyzer()
+    gtk.main()
 
 if __name__ == '__main__':
   main()

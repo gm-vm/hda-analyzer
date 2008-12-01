@@ -388,7 +388,7 @@ class HDANode:
     self.active_connection = None
     if self.conn_list:
       self.connections = self.codec.get_connections(self.nid)
-      if self.wtype_id != 'AUD_MIX':
+      if not self.wtype_id in ['AUD_MIX', 'POWER']:
         self.active_connection = self.codec.rw(self.nid, VERBS['GET_CONNECT_SEL'], 0)
     if self.in_amp:
       self.amp_caps_in = HDAAmpCaps(self.codec, self.nid, HDA_INPUT)
