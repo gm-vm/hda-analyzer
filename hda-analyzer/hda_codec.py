@@ -21,6 +21,8 @@ IOCTL_PVERSION = 0x80044810
 IOCTL_VERB_WRITE = 0xc0084811
 IOCTL_GET_WCAPS = 0xc0084812
 
+CTL_IOCTL_CARD_INFO = 0x81785501
+
 AC_NODE_ROOT	= 0
 
 (
@@ -608,6 +610,21 @@ class HDAGPIO:
       return
     self.write(name)
 
+class HDACard:
+
+  def __init__(self, card, ctl_fd=None):
+    self.card = card
+    if not ctl_fd:
+      ctl_fd = os.open("/dev/snd/controlC%i" % card, os.O_RDONLY)
+    info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, '', '', '', '', '', '', '')
+    res = ioctl(ctl_fd, CTL_IOCTL_CARD_INFO, info)
+    a = struct.unpack('ii16s16s32s80s16s80s128s', res)
+    self.id = a[2].replace('\x00', '')
+    self.driver = a[3].replace('\x00', '')
+    self.name = a[4].replace('\x00', '')
+    self.longname = a[5].replace('\x00', '')
+    self.components = a[8].replace('\x00', '')
+
 class HDACodec:
 
   afg = None
@@ -617,8 +634,14 @@ class HDACodec:
   revision_id = None
 
   def __init__(self, card=0, device=0):
-    self.card = card
-    self.device = device
+    if type(1) == type(card):
+      self.device = device
+      self.card = card
+      self.mcard = HDACard(card)
+    else:
+      self.device = device
+      self.mcard = card
+      self.card = card.card
     self.fd = os.open("/dev/snd/hwC%sD%s" % (card, device), os.O_RDWR)
     info = struct.pack('Ii64s80si64s', 0, 0, '', '', 0, '')
     res = ioctl(self.fd, IOCTL_INFO, info)
@@ -1027,6 +1050,21 @@ class HDACodec:
     if hasattr(node, 'realtek_coeff_proc'):
       str += print_realtek_coef(node)
     return str, node
+
+def HDA_card_list():
+  from dircache import listdir
+  result = []
+  for name in listdir('/dev/snd/'):
+    if name.startswith('controlC'):
+      fd = os.open("/dev/snd/%s" % name, os.O_RDONLY)
+      info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, '', '', '', '', '', '', '')
+      res = ioctl(fd, CTL_IOCTL_CARD_INFO, info)
+      a = struct.unpack('ii16s16s32s80s16s80s128s', res)
+      card = a[0]
+      components = a[8].replace('\x00', '')
+      if components.find('HDA:') >= 0:
+        result.append(HDACard(card, ctl_fd=fd))
+  return result
 
 if __name__ == '__main__':
   v = HDACodec()

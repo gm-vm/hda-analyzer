@@ -17,29 +17,26 @@ import gtk
 import pango
 
 from dircache import listdir
-from hda_codec import HDACodec, HDANode, \
+from hda_codec import HDACodec, HDANode, HDA_card_list, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS
 
-PROC_DIR = '/proc/asound'
-
 CODEC_TREE = {}
 
-def read_verbs2(card, codec):
-  c = HDACodec(card, codec)
+def read_nodes2(card, codec):
+  try:
+    c = HDACodec(card, codec)
+  except OSError, msg:
+    return
   c.analyze_root_nodes()
   CODEC_TREE[card][codec] = c
 
-def read_verbs1(card):
-  CODEC_TREE[card] = {}
-  for l in listdir('%s/card%s' % (PROC_DIR, card)):
-    if l.startswith('codec#') and l[6] >= '0' and l[6] <= '9':
-      read_verbs2(card, int(l[6:]))
-
-def read_verbs():
-  for l in listdir(PROC_DIR):
-    if l.startswith('card') and l[4] >= '0' and l[4] <= '9':
-      read_verbs1(int(l[4:]))
+def read_nodes():
+  l = HDA_card_list()
+  for c in l:
+    CODEC_TREE[c.card] = {}
+    for i in range(4):
+      read_nodes2(c.card, i)
 
 (
     TITLE_COLUMN,
@@ -110,6 +107,7 @@ class HDAAnalyzer(gtk.Window):
     card = model.get_value(iter, CARD_COLUMN)
     codec = model.get_value(iter, CODEC_COLUMN)
     node = model.get_value(iter, NODE_COLUMN)
+    self.card = card
     self.codec = None
     if codec >= 0:
       self.codec = CODEC_TREE[card][codec]
@@ -137,7 +135,12 @@ class HDAAnalyzer(gtk.Window):
       self.node_window.remove(child)
 
     if not n:
-      if codec:
+      if not codec:
+        for i in CODEC_TREE[self.card]:
+          card = CODEC_TREE[self.card][i].mcard
+          break
+        self.__build_card(card)
+      elif codec:
         self.__build_codec(codec)
       else:
         return
@@ -732,8 +735,34 @@ class HDAAnalyzer(gtk.Window):
     mframe.add(vbox)
     w.add_with_viewport(mframe)
 
+  def __build_card_info(self, card):
+    text_view = self.__new_text_view()
+    str =  'Card:       %s\n' % card.card
+    str += 'Id:         %s\n' % card.id
+    str += 'Driver:     %s\n' % card.driver
+    str += 'Name:       %s\n' % card.name
+    str += 'LongName:   %s\n' % card.longname
+    buffer = gtk.TextBuffer(None)
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, str[:-1])
+    text_view.set_buffer(buffer)
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
+    return text_view
+
+  def __build_card(self, card):
+    w = self.node_window
+
+    mframe = gtk.Frame(card.name)
+    mframe.set_border_width(4)
+
+    vbox = gtk.VBox(False, 0)
+    vbox.pack_start(self.__build_card_info(card), False, False)
+    mframe.add(vbox)
+    w.add_with_viewport(mframe)
+
 def main():
-  read_verbs()
+  read_nodes()
   HDAAnalyzer()
   gtk.main()
 
