@@ -50,21 +50,23 @@ def read_nodes():
       cnt += 1
   return cnt    
 
-def do_diff1(codec, diff1, out=True):
+def do_diff1(codec, diff1):
   from difflib import unified_diff
   diff = unified_diff(diff1.split('\n'), codec.dump().split('\n'), n=8, lineterm='')
   diff = '\n'.join(list(diff))
-  if out and len(diff) > 0:
-    open(DIFF_FILE, "w+").write(diff)
-    print "Diff was stored to: %s" % DIFF_FILE
+  if len(diff) > 0:
+    diff = 'Diff for codec %i/%i (%s):\n' % (codec.card, codec.device, codec.name) + diff
   return diff
 
 def do_diff():
-  res = ''
+  diff = ''
   for card in CODEC_TREE:
     for codec in CODEC_TREE[card]:
-      res += do_diff1(CODEC_TREE[card][codec], DIFF_TREE[card][codec])
-  return res
+      diff += do_diff1(CODEC_TREE[card][codec], DIFF_TREE[card][codec])
+  if len(diff) > 0:
+    open(DIFF_FILE, "w+").write(diff + '\n')
+    print "Diff was stored to: %s" % DIFF_FILE
+  return diff and True or False
 
 (
     TITLE_COLUMN,
@@ -198,7 +200,7 @@ mailing list - http://www.alsa-project.org .
                         (gtk.STOCK_OK, gtk.RESPONSE_OK))
     text_view = gtk.TextView()
     text_view.set_border_width(4)
-    str = do_diff1(self.codec, DIFF_TREE[self.card][self.codec.device], out=False)
+    str = do_diff1(self.codec, DIFF_TREE[self.card][self.codec.device])
     if str == '':
       str = 'No changes'
     buffer = gtk.TextBuffer(None)
