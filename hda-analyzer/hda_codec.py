@@ -16,12 +16,18 @@ import os
 import struct
 from fcntl import ioctl
 
-IOCTL_INFO = 0x80dc4801
-IOCTL_PVERSION = 0x80044810
-IOCTL_VERB_WRITE = 0xc0084811
-IOCTL_GET_WCAPS = 0xc0084812
+def __ioctl_val(val):
+  # workaround for OverFlow bug in python 2.4
+  if val & 0x80000000:
+    return -((val^0xffffffff)+1)
+  return val
 
-CTL_IOCTL_CARD_INFO = 0x81785501
+IOCTL_INFO = __ioctl_val(0x80dc4801)
+IOCTL_PVERSION = __ioctl_val(0x80044810)
+IOCTL_VERB_WRITE = __ioctl_val(0xc0084811)
+IOCTL_GET_WCAPS = __ioctl_val(0xc0084812)
+
+CTL_IOCTL_CARD_INFO = __ioctl_val(0x81785501)
 
 AC_NODE_ROOT	= 0
 
@@ -1056,7 +1062,10 @@ def HDA_card_list():
   result = []
   for name in listdir('/dev/snd/'):
     if name.startswith('controlC'):
-      fd = os.open("/dev/snd/%s" % name, os.O_RDONLY)
+      try:
+	fd = os.open("/dev/snd/%s" % name, os.O_RDONLY)
+      except OSError, msg:
+      	continue
       info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, '', '', '', '', '', '', '')
       res = ioctl(fd, CTL_IOCTL_CARD_INFO, info)
       a = struct.unpack('ii16s16s32s80s16s80s128s', res)

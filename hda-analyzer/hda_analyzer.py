@@ -822,6 +822,9 @@ def main():
     print "No HDA codecs were found or insufficient priviledges for "
     print "/dev/snd/controlC* and /dev/snd/hwdepC*D* device files."
     print
+    print "You may also check, if you compiled HDA driver with HWDEP"
+    print "interface as well."
+    print
     print "Try run this program as root user."
   else:
     HDAAnalyzer()
