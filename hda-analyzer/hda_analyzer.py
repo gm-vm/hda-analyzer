@@ -164,6 +164,9 @@ http://www.intel.com/standards/hdaudio/ for more details.
 
 Please, if you find how your codec work, send this information to alsa-devel
 mailing list - http://www.alsa-project.org .
+
+Bugs, ideas, comments about this program should be sent to alsa-devel
+mailing list, too.
 """
     buffer = gtk.TextBuffer(None)
     iter = buffer.get_iter_at_offset(0)
