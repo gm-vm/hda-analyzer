@@ -260,6 +260,7 @@ class HDAAmpVal:
     self.nid = node.nid
     self.stereo = node.stereo
     self.indices = 1
+    self.origin_vals = None
     if dir == HDA_INPUT:
       self.indices = node.wtype_id == 'PIN' and 1 or len(node.connections)
     self.reread()
@@ -298,6 +299,22 @@ class HDAAmpVal:
         self.vals.append(val)
       val = self.codec.rw(self.nid, verb, (0 << 13) | dir | i)
       self.vals.append(val)
+    if self.origin_vals == None:
+      self.origin_vals = self.vals[:]
+
+  def revert(self):
+    self.vals = self.origin_vals[:]
+    for idx in range(len(self.vals)):
+      self.__write_val(idx)
+
+class HDARootNode:
+
+  def __init__(self, codec, _name):
+    self.codec = codec
+    self._name = _name
+
+  def name(self):
+    return self._name
 
 class HDANode:
   
@@ -340,6 +357,13 @@ class HDANode:
     if self.lr_swap: self.wcaps_list.append('LR_SWAP')
     if self.cp_caps: self.wcaps_list.append('CP_CAPS')
 
+    self.origin_active_connection = None
+    self.origin_pwr = None
+    self.origin_digi1 = None
+    self.origin_pincap_eapdbtls = None
+    self.origin_pinctls = None
+    self.origin_vol_knb = None
+    self.origin_sdi_select = None
     self.reread()
     
   def wtype_name(self):
@@ -396,6 +420,8 @@ class HDANode:
       self.connections = self.codec.get_connections(self.nid)
       if not self.wtype_id in ['AUD_MIX', 'POWER']:
         self.active_connection = self.codec.rw(self.nid, VERBS['GET_CONNECT_SEL'], 0)
+        if self.origin_active_connection == None:
+          self.origin_active_connection = self.active_connection
     if self.in_amp:
       self.amp_caps_in = HDAAmpCaps(self.codec, self.nid, HDA_INPUT)
       self.amp_vals_in = HDAAmpVal(self.codec, self, HDA_INPUT)
@@ -473,6 +499,9 @@ class HDANode:
     if self.power:
       states = ["D0", "D1", "D2", "D3"]
       pwr = self.codec.rw(self.nid, VERBS['GET_POWER_STATE'], 0)
+      self.pwr = pwr
+      if self.origin_pwr == None:
+        self.origin_pwr = pwr
       self.pwr_setting = pwr & 0x0f
       self.pwr_actual = (pwr >> 4) & 0x0f
       self.pwr_setting_name = self.pwr_setting < 4 and states[self.pwr_setting] or "UNKNOWN"
@@ -489,6 +518,8 @@ class HDANode:
       return
     val = self.codec.rw(self.nid, VERBS['GET_EAPD_BTLENABLE'], 0)
     self.pincap_eapdbtls = val
+    if self.origin_pincap_eapdbtls == None:
+     self.origin_pincap_eapdbtls = val
     for name in EAPDBTL_BITS:
       bit = EAPDBTL_BITS[name]
       if val & (1 << bit): self.pincap_eapdbtl.append(name)
@@ -505,6 +536,8 @@ class HDANode:
   def reread_pin_widget_control(self):
     pinctls = self.codec.rw(self.nid, VERBS['GET_PIN_WIDGET_CONTROL'], 0)
     self.pinctls = pinctls
+    if self.origin_pinctls == None:
+      self.origin_pinctls = pinctls
     self.pinctl = []
     for name in PIN_WIDGET_CONTROL_BITS:
       bit = PIN_WIDGET_CONTROL_BITS[name]
@@ -530,6 +563,8 @@ class HDANode:
   def reread_vol_knb(self):
     cap = self.codec.rw(self.nid, VERBS['GET_VOLUME_KNOB_CONTROL'], 0)
     self.vol_knb = cap
+    if self.origin_vol_knb == None:
+      self.origin_vol_knb = cap
     self.vol_knb_direct = (cap >> 7) & 1
     self.vol_knb_val = cap & 0x7f
     
@@ -550,6 +585,8 @@ class HDANode:
     if self.wtype_id == 'AUD_IN' and self.aud_channel == 0:
       sdi = self.codec.rw(self.nid, VERBS['GET_SDI_SELECT'], 0)
       self.sdi_select = sdi & 0x0f
+      if self.origin_sdi_select == None:
+        self.origin_sdi_select = sdi
 
   def sdi_select_set_value(self, value):
     if self.sdi_select != None:
@@ -564,6 +601,8 @@ class HDANode:
       return
     digi1 = self.codec.rw(self.nid, VERBS['GET_DIGI_CONVERT_1'], 0)
     self.digi1 = digi1
+    if self.origin_digi1 == None:
+      self.origin_digi1 = digi1
     for name in DIG1_BITS:
       bit = DIG1_BITS[name]
       if digi1 & (1 << bit): self.dig1.append(name)
@@ -582,19 +621,41 @@ class HDANode:
         self.digi1 &= ~mask
       self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_1'], self.digi1 & 0xff)
     self.reread_dig1()
-    
+
+  def revert(self):
+    if self.origin_active_connection != None:
+      self.set_active_connection(self.origin_active_connection)
+    if self.origin_pwr != None:
+      self.codec.rw(self.nid, VERBS['SET_POWER_STATE'], self.origin_pwr)
+    if self.in_amp:
+      self.amp_vals_in.revert()
+    if self.out_amp:
+      self.amp_vals_out.revert()
+    if self.origin_pincap_eapdbtls != None:
+      self.codec.rw(self.nid, VERBS['SET_EAPD_BTLENABLE'], self.origin_pincap_eapdbtls)
+    if self.origin_vol_knb != None:
+      self.codec.rw(self.nid, VERBS['SET_VOLUME_KNOB_CONTROL'], self.origin_vol_knb)
+    if self.origin_sdi_select != None:
+      self.codec.rw(self.nid, VERBS['SET_SDI_SELECT'], self.origin_sdi_select)
+    if self.origin_digi1 != None:
+      self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_1'], self.origin_digi1 & 0xff)
+      self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_2'], (self.origin_digi1 >> 8) & 0xff)
+    self.reread()
 
 class HDAGPIO:
 
   def __init__(self, codec, nid):
     self.codec = codec
     self.nid = nid
+    self.originval = None
     self.reread()
 
   def reread(self):
     self.val = {}
     for i in GPIO_IDS:
-      self.val[i] = self.codec.rw(self.nid, GPIO_IDS[i][0], 0)
+     self.val[i] = self.codec.rw(self.nid, GPIO_IDS[i][0], 0)
+    if self.originval == None:
+      self.originval = self.val.copy()
 
   def test(self, name, bit):
     return (self.val[name] & (1 << bit)) and True or False
@@ -615,6 +676,11 @@ class HDAGPIO:
     if old == self.test(name, bit):
       return
     self.write(name)
+
+  def revert(self):
+    for i in GPIO_IDS:
+      self.val[i] = self.originval[i]
+      self.write(i)
 
 class HDACard:
 
@@ -719,7 +785,17 @@ class HDACodec:
       prev_nid = val
     return res
 
-  def analyze_root_nodes(self):
+  def revert(self):
+    self.gpio.revert()
+    for nid in self.nodes:
+      self.nodes[nid].revert()
+
+  def get_node(self, nid):
+    if nid == self.afg:
+      return HDARootNode(self, "Audio Root Node")
+    return self.nodes[nid]
+
+  def analyze(self):
     self.afg = None
     self.mfg = None
     self.vendor_id = self.param_read(AC_NODE_ROOT, PARAMS['VENDOR_ID'])
@@ -762,7 +838,12 @@ class HDACodec:
     self.gpio_wake = (self.gpio_cap >> 31) & 1 and True or False
     self.gpio = HDAGPIO(self, self.afg)
 
-    self.nodes, self.base_nid = self.get_sub_nodes(self.afg)
+    nodes_count, nid = self.get_sub_nodes(self.afg)
+    self.base_nid = nid
+    self.nodes = {}
+    for i in range(nodes_count):
+      self.nodes[nid] = HDANode(self, nid)
+      nid += 1
 
   def analyze_pcm_rates(self, pcm):
     rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200,
@@ -836,7 +917,7 @@ class HDACodec:
               (caps.ofs, caps.nsteps, caps.stepsize, caps.mute and 1 or 0)
 
     if not self.afg and not self.mfg:
-      self.analyze_root_nodes()
+      self.analyze()
     str = 'Vendor Id: 0x%x\n' % self.vendor_id
     str += 'Subsystem Id: 0x%x\n' % self.subsystem_id
     str += 'Revision Id: 0x%x\n' % self.revision_id
@@ -858,16 +939,12 @@ class HDACodec:
     
     str += print_gpio(self)
 
-    if not skip_nodes:
-      nid = self.base_nid
-      for i in range(self.nodes):
-        s, n = self.dump_node(nid)
-        str += s
-        nid += 1
+    for i in self.nodes:
+      self.dump_node(self.nodes[i])
     
     return str
 
-  def dump_node(self, nid):
+  def dump_node(self, node):
 
     def print_pcm_rates(node):
       s = ''
@@ -1008,8 +1085,7 @@ class HDACodec:
       str = "  Processing Coefficient: 0x%02x\n" % node.realtek_coeff_proc
       return str + "  Coefficient Index: 0x%02x\n" % node.realtek_coeff_index
 
-    node = HDANode(self, nid)
-    str = "Node 0x%02x [%s] wcaps 0x%x:" % (nid, node.wtype_name(), node.wcaps)
+    str = "Node 0x%02x [%s] wcaps 0x%x:" % (node.nid, node.wtype_name(), node.wcaps)
     if node.stereo:
       str += node.channels == 2 and " Stereo" or " %d-Channels" % node.channels
     else:
@@ -1055,7 +1131,7 @@ class HDACodec:
       str += print_proc_caps(node)
     if hasattr(node, 'realtek_coeff_proc'):
       str += print_realtek_coef(node)
-    return str, node
+    return str
 
 def HDA_card_list():
   from dircache import listdir
@@ -1077,7 +1153,7 @@ def HDA_card_list():
 
 if __name__ == '__main__':
   v = HDACodec()
-  v.analyze_root_nodes()
+  v.analyze()
   print "vendor_id = 0x%x, subsystem_id = 0x%x, revision_id = 0x%x" % (v.vendor_id, v.subsystem_id, v.revision_id)
   print "afg = %s, mfg = %s" % (v.afg and "0x%x" % v.afg or 'None', v.mfg and "0x%x" % v.mfg or 'None')
   print

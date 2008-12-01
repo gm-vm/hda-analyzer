@@ -17,7 +17,7 @@ import gtk
 import pango
 
 from dircache import listdir
-from hda_codec import HDACodec, HDANode, HDA_card_list, \
+from hda_codec import HDACodec, HDA_card_list, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS
 
@@ -28,7 +28,7 @@ def read_nodes2(card, codec):
     c = HDACodec(card, codec)
   except OSError, msg:
     return
-  c.analyze_root_nodes()
+  c.analyze()
   CODEC_TREE[card][codec] = c
 
 def read_nodes():
@@ -57,12 +57,9 @@ class HDAAnalyzer(gtk.Window):
   codec = None
   node = None
 
-  def __init__(self, parent=None):
+  def __init__(self):
     gtk.Window.__init__(self)
-    try:
-      self.set_screen(parent.get_screen())
-    except AttributeError:
-      self.connect('destroy', lambda *w: gtk.main_quit())
+    self.connect('destroy', self.__destroy)
     self.set_default_size(800, 400)
     self.set_title(self.__class__.__name__)
     self.set_border_width(10)
@@ -87,7 +84,7 @@ class HDAAnalyzer(gtk.Window):
     hbox1.pack_start(button)
     button = gtk.Button("Revert")
     button.connect("clicked", self.__revert_clicked)
-    self.tooltips.set_tip(button, "Revert settings for all codecs.")
+    self.tooltips.set_tip(button, "Revert settings for selected codec.")
     hbox1.pack_start(button)
     vbox.pack_start(hbox1, False, False)
     hbox.pack_start(vbox, False, False)
@@ -103,10 +100,27 @@ class HDAAnalyzer(gtk.Window):
 
     self.show_all()    
 
+  def __destroy(self, widget):
+    dialog = gtk.MessageDialog(self,
+                      gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                      gtk.MESSAGE_QUESTION, gtk.BUTTONS_YES_NO,
+                      "HDA-Analyzer: Would you like to revert\n"
+                      "settings for all HDA codecs?")
+    response = dialog.run()
+    dialog.destroy()
+    
+    if response == gtk.RESPONSE_YES:
+      for card in CODEC_TREE:
+        for codec in CODEC_TREE[card]:
+          CODEC_TREE[card][codec].revert()
+      print "Settings for all codecs were reverted..."
+    
+    gtk.main_quit()
+
   def __about_clicked(self, button):
     dialog = gtk.Dialog('About', self,
                         gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-                          (gtk.STOCK_OK, gtk.RESPONSE_OK))
+                        gtk.BUTTONS_OK)
     text_view = gtk.TextView()
     text_view.set_border_width(4)
     str =  """\
@@ -133,8 +147,20 @@ mailing list - http://www.alsa-project.org .
     dialog.destroy()
     
   def __revert_clicked(self, button):
-    self.__refresh()
-    pass
+    if not self.codec:
+      msg = "Please, select a codec in left codec/node tree."
+      type = gtk.MESSAGE_WARNING
+    else:
+      self.codec.revert()
+      self.__refresh()
+      msg = "Setting for codec %s/%s (%s) was reverted!" % (self.codec.card, self.codec.device, self.codec.name)
+      type = gtk.MESSAGE_INFO
+
+    dialog = gtk.MessageDialog(self,
+                      gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                      type, gtk.BUTTONS_OK, msg)
+    dialog.run()
+    dialog.destroy()
 
   def __refresh(self):
     self.load()
@@ -148,7 +174,8 @@ mailing list - http://www.alsa-project.org .
     elif codec and self.node < 0:
       txt = codec.dump(skip_nodes=True)
     else:
-      txt, n = codec.dump_node(node)
+      n = codec.get_node(node)
+      txt = codec.dump_node(n)
     buffer = self.info_buffer
     start, end = buffer.get_bounds()
     buffer.delete(start, end)
@@ -168,7 +195,7 @@ mailing list - http://www.alsa-project.org .
     if codec >= 0:
       self.codec = CODEC_TREE[card][codec]
     self.node = node
-    self.load()
+    self.__refresh()
 
   def load(self):
     codec = self.codec
@@ -179,13 +206,7 @@ mailing list - http://www.alsa-project.org .
     elif codec and node < 0:
       txt = codec.dump(skip_nodes=True)
     else:
-      txt, n = codec.dump_node(node)
-    buffer = self.info_buffer
-    start, end = buffer.get_bounds()
-    buffer.delete(start, end)
-    if not txt: return
-    iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, txt)
+      n = codec.get_node(node)
 
     for child in self.node_window.get_children():
       self.node_window.remove(child)
@@ -240,15 +261,11 @@ mailing list - http://www.alsa-project.org .
                     CODEC_COLUMN, codec.device,
                     NODE_COLUMN, -1,
                     ITALIC_COLUMN, False)
-        nid = codec.base_nid
-        for verb in range(codec.nodes):
+        for nid in codec.nodes:
           viter = model.append(citer)
-          node = None
-          if type(1) == type(nid):
-            node = HDANode(codec, nid)
+          node = codec.get_node(nid)
           model.set(viter,
-                      TITLE_COLUMN, node and
-                              'Node[0x%02x] %s' % (nid, node.wtype_id) or nid,
+                      TITLE_COLUMN, 'Node[0x%02x] %s' % (nid, node.wtype_id),
                       CARD_COLUMN, card,
                       CODEC_COLUMN, codec.device,
                       NODE_COLUMN, nid,
@@ -346,7 +363,7 @@ mailing list - http://www.alsa-project.org .
       idx = 0
       for i in node.connections:
         iter = model.append()
-        node1 = HDANode(node.codec, node.connections[idx])
+        node1 = self.codec.get_node(node.connections[idx])
         model.set(iter, 0, node.active_connection == idx,
                         1, node1.name())
         idx += 1
