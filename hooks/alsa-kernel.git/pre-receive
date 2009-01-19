@@ -131,6 +131,7 @@ def read_kmirror_commits():
                 ALSA_LAST_COMMIT = commitref
         elif line.startswith('Author:') or line.startswith('AuthorDate:') or \
              line.startswith('Commit:') or line.startswith('CommitDate:'):
+            line = line.replace('Signed-off-by:', '')
             a, b = line.split(': ')
             commit[a.strip()] = b.strip()
     if commitref:
