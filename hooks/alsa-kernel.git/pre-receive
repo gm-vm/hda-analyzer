@@ -391,7 +391,7 @@ def compare_trees(lastref):
     for i in ['oss', 'pci/ac97/ak4531_codec.c', 'isa/sb/sb16_csp_codecs.h',
     	      'pci/korg1212/korg1212-firmware.h', 'pci/ymfpci/ymfpci_image.h',
     	      'pci/hda/hda_patch.h',
-    	      'isa/ad1848/ad1848_lib.c', 'isa/cs423x/cs4231_lib.c',
+    	      'isa/ad1848/ad1848_lib.c', 'isa/cs423x/cs4231_lib.c', 'isa/cs423x/cs4232.c',
     	      'include/cs4231.h', 'soc/at91/eti_b1_wm8731.c',
     	      'aoa/codecs/snd-aoa-codec-onyx.c', 'aoa/codecs/snd-aoa-codec-onyx.h',
     	      'aoa/codecs/snd-aoa-codec-tas-basstreble.h', 'aoa/codecs/snd-aoa-codec-tas-gain-table.h',

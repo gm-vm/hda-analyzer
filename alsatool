@@ -732,8 +732,8 @@ def kmirrorpick(argv, edit=True, sign=False, interactive=True):
 		os.mkdir(tmpdir)
 	if os.system("git --work-tree=%s --git-dir=%s format-patch -k --stdout --full-index --committer %s~1..%s > %s" % (repo, repo + '/.git', commit, commit, tmpdir + '/format-patch')):
 		raise ValueError, "format-patch"
-	lines = open(tmpdir + "/format-patch").readlines()
-	open(tmpdir + "/format-patch", "w+").write(''.join(lines))
+	#lines = open(tmpdir + "/format-patch").readlines()
+	#open(tmpdir + "/format-patch", "w+").write(''.join(newlines))
 	if edit:
 		editor = os.environ.has_key('EDITOR') and os.environ['EDITOR'] or 'vi'
 		copyfile(tmpdir + "/format-patch", tmpdir + "/format-patch.orig")
@@ -741,9 +741,18 @@ def kmirrorpick(argv, edit=True, sign=False, interactive=True):
 		if not os.system("diff %s %s > /dev/null" % (tmpdir + "/format-patch", tmpdir + "/format-patch.orig")):
 			return "nochanges"
 	res = os.system("git am%s%s -3 --keep %s" % (sign, interactive, tmpdir + '/format-patch'))
+	if res == 256:
+	  res = os.system("LANG=C patch -p2 < %s > %s" % (tmpdir + '/format-patch', tmpdir + '/patch.out'))
+          lines = open(tmpdir + '/patch.out').readlines()
+          sys.stdout.write(''.join(lines))
+	  if res == 0:
+	    for line in lines:
+	      if line.startswith('patching file '):
+	        os.system("git add %s" % line[13:])
+	    os.system("git am -3 --resolved")
 	#if os.system("git --work-tree=%s --git-dir=%s mailinfo -u %s %s < %s > %s" % (repo, repo + '/.git', tmpdir + '/msg', tmpdir + '/patch', tmpdir + '/format-patch', tmpdir + '/info')):
 	#	raise ValueError, "mail-info"
-	rmtree(tmpdir)
+	#rmtree(tmpdir)
 	return res
 
 def edit(argv, remove=False):
