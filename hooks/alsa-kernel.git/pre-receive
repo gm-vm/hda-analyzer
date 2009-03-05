@@ -63,6 +63,7 @@ def error(lines, msg, *args):
 def fail(): 
     if ALSA_LAST_COMMIT:
         stderr.write('PRE-RECEIVE: Reverting alsa-kmirror.git repo to original state\n')
+        stderr.write('PRE-RECEIVE: alsa-kmirror.git problematic HEAD: %s\n' % os.popen('git --git-dir=%s rev-parse HEAD' % KMIRROR_REPO).read())
         if system('git --git-dir=%s update-ref HEAD "refs/heads/master"' % KMIRROR_REPO):
             raise ValueError, "update-ref failed"
         if system('git --git-dir=%s reset -q --mixed %s > /dev/null' % (KMIRROR_REPO, ALSA_LAST_COMMIT)):
