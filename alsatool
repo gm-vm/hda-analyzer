@@ -427,8 +427,8 @@ def parse_log(fp):
 		elif line.startswith('Author:') or line.startswith('AuthorDate:') or \
 		     line.startswith('Commit:') or line.startswith('CommitDate:') or \
 		     line.startswith('Merge:'):
-		     	a, b = line.split(': ')
-			commit[a.strip()] = b.strip()
+		     	a = line.split(': ')
+			commit[a[0].strip()] = (': '.join(a[1:])).strip()
 		elif line.startswith('    '):
 			if len(commit['comment']) == 0 and line[4:].strip() == '':
 				continue
@@ -802,6 +802,10 @@ def import_(argv):
 				a2 = a[2].split(',')
 				b1 = b[1].split(',')
 				b2 = b[2].split(',')
+				if len(a1) < 2:
+					a1.append('XXX')
+				if len(b1) < 2:
+					b1.append('XXX')
 				if a1[1] != b1[1] or a2[1] != b2[1]:
 					return False
 			elif diff1[idx] != diff2[idx]:
@@ -1038,12 +1042,16 @@ def kmirrorcheck(argv):
 		os.system("git commit -m \"%s\" -e" % ''.join(msg))
 
 def kmirrormark(argv):
-	commit = argv[0]
-	fuller = parse_log(os.popen("git log --name-only --pretty=fuller --date=iso %s~1..%s" % (commit, commit)))[0]
-	git_ok_commits = read_git_ok_commits()
-	if mark_git_ok_commits(git_ok_commits, fuller):
-		msg = []
-		msg.append('git-ok-commits: added %s %s\n\n' % (fuller['commit'][:7], fuller['comment'][0].strip()))
+	msg = []
+	for commit in argv:
+		fuller = parse_log(os.popen("git log --name-only --pretty=fuller --date=iso %s~1..%s" % (commit, commit)))[0]
+		if fuller:
+			git_ok_commits = read_git_ok_commits()
+			if mark_git_ok_commits(git_ok_commits, fuller):
+				msg.append('git-ok-commits: added %s %s\n' % (fuller['commit'][:7], fuller['comment'][0].replace('"', "'").strip()))
+		else:
+			print 'Wrong commit ID: %s' % commit
+	if msg:
 		msg.append('\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n')
 		os.chdir(ROOT + '/alsa')
 		os.system("git add kernel-sync/git-ok-commits")
