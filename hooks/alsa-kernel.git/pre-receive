@@ -45,6 +45,7 @@ NOT_ALSA_FILES = (
 )
 
 ALSA_FILES1 = {
+    'Documentation/DocBook/alsa-driver-api.tmpl', 'Documentation/DocBook/alsa-driver-api.tmpl',
     'Documentation/sound/alsa/':	'Documentation/',
     'sound/':				'',
     'include/sound/':			'include/'
