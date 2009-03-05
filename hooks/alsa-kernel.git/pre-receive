@@ -261,7 +261,10 @@ def try_to_merge(commit):
         error([], "Please, check if patch was merged to alsa-kmirror.git at first!\n")
         error([], 'Line: "%s" "%s" "%s" "%s"\n' % (commit['Author'], commit['AuthorDate'], commit['Commit'], commit['CommitDate']))
         error([], 'Patch: %s %s' % (commit['commit'][:7], commit['comment'][0]))
-        fail()
+	chdir(curdir)
+	rmtree(worktree, ignore_errors=True)
+   	stderr.write('PRE-RECEIVE: Merge skipped %s %s' % (ref[:7], commit['comment'][0]))
+        return
     if system("git --work-tree=%s --git-dir=%s apply -v %s" % (worktree, KMIRROR_REPO, patchfile)):
         chdir(curdir)
         raise ValueError, 'git apply' 
