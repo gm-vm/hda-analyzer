@@ -45,7 +45,7 @@ NOT_ALSA_FILES = (
 )
 
 ALSA_FILES1 = {
-    'Documentation/DocBook/alsa-driver-api.tmpl', 'Documentation/DocBook/alsa-driver-api.tmpl',
+    'Documentation/DocBook/alsa-driver-api.tmpl': 'Documentation/DocBook/alsa-driver-api.tmpl',
     'Documentation/sound/alsa/':	'Documentation/',
     'sound/':				'',
     'include/sound/':			'include/'
@@ -374,7 +374,7 @@ def compare_trees(lastref):
     mkdir(worktreek)
     if system("git --work-tree=%s --git-dir=%s checkout -f -q master" % (worktree, KMIRROR_REPO)):
         raise ValueError, 'git checkout (kmirror)'
-    if system("git --work-tree=%s --git-dir=%s checkout -q %s sound include/sound Documentation/sound/alsa" % (worktreek, KERNEL_REPO, lastref)):
+    if system("git --work-tree=%s --git-dir=%s checkout -q %s sound include/sound Documentation/DocBook Documentation/sound/alsa" % (worktreek, KERNEL_REPO, lastref)):
         raise ValueError, 'git checkout (kernel)'
     curdir = getcwd()
     chdir(TMP_PATH)
@@ -383,7 +383,11 @@ def compare_trees(lastref):
     system("mv alsa-kernel-repo/include/sound/* alsa-kernel-repo/include")
     rmtree("alsa-kernel-repo/include/sound")
     system("mv alsa-kernel-repo/Documentation/sound/alsa/* alsa-kernel-repo/Documentation")
+    system("mv alsa-kernel-repo/Documentation/DocBook/alsa-driver-api.tmpl alsa-kernel-repo/Documentation")
     rmtree("alsa-kernel-repo/Documentation/sound")
+    rmtree("alsa-kernel-repo/Documentation/DocBook")
+    system("mkdir alsa-kernel-repo/Documentation/DocBook")
+    system("mv alsa-kernel-repo/Documentation/alsa-driver-api.tmpl alsa-kernel-repo/Documentation/DocBook")
     for i in ['.git-ok-commits', '.hgignore', '.hgtags', '.gitignore', 'kernel', 'scripts', 'oss']:
         if isdir("alsa-kmirror-repo/%s" % i):
             rmtree("alsa-kmirror-repo/%s" % i)
