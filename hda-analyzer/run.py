@@ -8,7 +8,7 @@ try:
   import gtk
   import pango
 except:
-  print "Please, install pygtk2 package"
+  print "Please, install pygtk2 or python-gtk package"
 
 import os
 from urllib import splithost
