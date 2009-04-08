@@ -979,6 +979,9 @@ def kmirrorcheck(argv):
 		return str.strip()
 
 	full = argv and argv[0] == 'full'
+	fromrev = 'linux-2.6'
+	if argv and len(argv) > 1:
+	  fromrev = argv[1]
 
 	print("Analyzing git-ok-commits..")
 	git_ok_commits = read_git_ok_commits()
@@ -994,7 +997,7 @@ def kmirrorcheck(argv):
 	
 	os.chdir(ROOT + '/alsa-kernel')
 	if full:
-		log1 = os.popen("git log --reverse --name-only --pretty=oneline --date=iso linux-2.6..master")
+		log1 = os.popen("git log --reverse --name-only --pretty=oneline --date=iso %s..master" % fromrev)
 	else:
 		print("Looking for a common base...")
 		base = os.popen("git merge-base %s linux-2.6" % getorigin()).read(1024).strip()
@@ -1129,7 +1132,7 @@ The following files will be updated:
 	print(lines)
 
 def kimport(argv=None):
-	repos = argv and {} or {'tiwai':'master'}
+	#repos = argv and {} or {'tiwai':'master'}
 	if argv:
 		for i in argv:
 			a, b = i.split(i.find(':') > 0 and ':' or '/')
