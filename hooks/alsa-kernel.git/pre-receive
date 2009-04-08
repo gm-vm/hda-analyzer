@@ -30,6 +30,7 @@ VALID_COMMITERS = (
     'Clemens Ladisch <clemens@ladisch.de>',
     'James Courtier-Dutton <James@superbug.demon.co.uk>',
     'Linus Torvalds <torvalds@linux-foundation.org>',
+    'Mark Brown <broonie@opensource.wolfsonmicro.com>',
 )
 
 ALSA_FILES = (
