@@ -992,8 +992,8 @@ def kmirrorcheck(argv):
 		raise ValueError, "kmirror: git checkout master"
 	if os.system("git pull origin master"):
 		raise ValueError, "kmirror: git pull origin master"
-	kcommits = parse_log(os.popen("git log --reverse --pretty=fuller --date=iso v1.0.16..HEAD"))
-	print("Found %s commits after v1.0.16" % len(kcommits))
+	kcommits = parse_log(os.popen("git log --reverse --pretty=fuller --date=iso v1.0.19..HEAD"))
+	print("Found %s commits after v1.0.19" % len(kcommits))
 	
 	os.chdir(ROOT + '/alsa-kernel')
 	if full:
@@ -1132,7 +1132,7 @@ The following files will be updated:
 	print(lines)
 
 def kimport(argv=None):
-	#repos = argv and {} or {'tiwai':'master'}
+	repos = {}
 	if argv:
 		for i in argv:
 			a, b = i.split(i.find(':') > 0 and ':' or '/')

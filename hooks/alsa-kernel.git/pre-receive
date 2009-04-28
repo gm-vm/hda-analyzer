@@ -410,7 +410,13 @@ def compare_trees(lastref):
     	      'aoa/soundbus/i2sbus/i2sbus-core.c', 'aoa/soundbus/i2sbus/i2sbus-interface.h',
     	      'aoa/soundbus/i2sbus/i2sbus-pcm.c', 'aoa/codecs/snd-aoa-codec-tas.h',
     	      'include/uda1341.h', 'i2c/l3/', 'arm/sa11xx-uda1341.c',
-    	      'soc/at91/', 'soc/at32/']:
+    	      'soc/at91/', 'soc/at32/',
+    	      'usb/caiaq/caiaq-audio.c', 'usb/caiaq/caiaq-audio.h',
+    	      'usb/caiaq/caiaq-control.c', 'usb/caiaq/caiaq-control.h',
+    	      'usb/caiaq/caiaq-device.c', 'usb/caiaq/caiaq-device.h',
+    	      'usb/caiaq/caiaq-input.c', 'usb/caiaq/caiaq-input.h',
+    	      'usb/caiaq/caiaq-midi.c', 'usb/caiaq/caiaq-midi.h'
+    	      ]:
         if isdir("alsa-kernel-repo/%s" % i):
             rmtree("alsa-kernel-repo/%s" % i)
         elif exists("alsa-kernel-repo/%s" % i):
