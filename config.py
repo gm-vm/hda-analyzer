@@ -8,8 +8,8 @@ USER = os.getenv('USER')
 VERBOSE = False
 GERRORS = 0
 TMPDIR = '/dev/shm/alsatool'
-GIT_KERNEL_MERGE = 'v2.6.29'
-GIT_DRIVER_MERGE = 'v1.0.18'
+GIT_KERNEL_MERGE = 'v2.6.30'
+GIT_DRIVER_MERGE = 'v1.0.19'
 REPOSITORIES = [
         'alsa', 'alsa-driver', 'alsa-kmirror', 'alsa-lib', 'alsa-utils',
         'alsa-tools', 'alsa-firmware', 'alsa-oss', 'alsa-plugins',

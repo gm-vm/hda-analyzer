@@ -53,7 +53,7 @@ def xlist(argv=None):
 
 def git(repo, dir=None):
     if dir is None:
-        dir = ROOT + '/' + repo
+        dir = config.ROOT + '/' + repo
     return "git --work-tree=%s --git-dir=%s" % (dir, dir + '/.git')
 
 def clone(argv=None):
@@ -79,7 +79,7 @@ def pull(argv=None):
     for repo in repos:
         if git_system(repo, "checkout master"):
             raise ValueError, "checkout %s" % repo
-        os.chdir(ROOT + '/' + repo)
+        os.chdir(config.ROOT + '/' + repo)
         if git_system(repo, "%s pull origin master"):
             raise ValueError, "pull %s" % repo
 
@@ -180,14 +180,14 @@ def release1(repo, tag):
         pull(['alsa-kmirror'])
     files = []
     if repo == 'alsa-driver':
-        lines = open(ROOT + '/' + repo + '/configure.in').readlines()
+        lines = open(config.ROOT + '/' + repo + '/configure.in').readlines()
         for idx in range(0, len(lines)):
                 if lines[idx].startswith('CONFIG_SND_VERSION="'):
                         lines[idx] = 'CONFIG_SND_VERSION="%s"\n' % version
                         print(lines[idx][:-1])
                         break
-        open(ROOT + '/' + repo + '/configure.in', "w+").write(''.join(lines))
-        os.chdir(ROOT + '/' + repo)
+        open(config.ROOT + '/' + repo + '/configure.in', "w+").write(''.join(lines))
+        os.chdir(config.ROOT + '/' + repo)
         if os.path.exists('include/version.h'):
                 os.remove('include/version.h')
         if os.system("make ALSAKERNELDIR=../alsa-kernel all-deps"):
@@ -196,12 +196,12 @@ def release1(repo, tag):
                 raise ValueError, "aclocal"
         if os.system("autoconf"):
                 raise ValueError, "autoconf"
-        if os.system("./configure --with-debug=full --with-isapnp=yes --with-sequencer=yes --with-kernel=%s" % (ROOT + '/alsa-kernel')):
+        if os.system("./configure --with-debug=full --with-isapnp=yes --with-sequencer=yes --with-kernel=%s" % (config.ROOT + '/alsa-kernel')):
                 raise ValueError, "configure"
         if os.system("make include/sound/version.h"):
                 raise ValueError, "include/sound/version.h"
         files.append('configure.in')
-        os.chdir(ROOT + '/alsa-kmirror')
+        os.chdir(config.ROOT + '/alsa-kmirror')
         #if os.system("git add include/version.h"):
         #	raise ValueError, "git add"
         #if os.system('git commit -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % tag):
@@ -210,41 +210,41 @@ def release1(repo, tag):
                 raise ValueError, "git tag"
     elif repo in ['alsa-lib', 'alsa-plugins', 'alsa-utils',
                   'alsa-firmware', 'alsa-oss']:
-        lines = open(ROOT + '/' + repo + '/configure.in').readlines()
+        lines = open(config.ROOT + '/' + repo + '/configure.in').readlines()
         for idx in range(0, len(lines)):
                 if lines[idx].startswith('AM_INIT_AUTOMAKE(%s, ' % repo):
                         lines[idx] = 'AM_INIT_AUTOMAKE(%s, %s)\n' % (repo, version)
                         print(lines[idx][:-1])
                         break
-        open(ROOT + '/' + repo + '/configure.in', "w+").write(''.join(lines))
+        open(config.ROOT + '/' + repo + '/configure.in', "w+").write(''.join(lines))
         files.append('configure.in')
     elif repo == 'alsa-tools':
-        lines = open(ROOT + '/' + repo + '/Makefile').readlines()
+        lines = open(config.ROOT + '/' + repo + '/Makefile').readlines()
         for idx in range(0, len(lines)):
                 if lines[idx].startswith("VERSION = "):
                         lines[idx] = "VERSION = %s\n" % version
                         print(lines[idx][:-1])
                         break
-        open(ROOT + '/' + repo + '/Makefile', "w+").write(''.join(lines))
+        open(config.ROOT + '/' + repo + '/Makefile', "w+").write(''.join(lines))
         files.append('Makefile')
     elif repo == 'alsa-python':
-        lines = open(ROOT + '/' + repo + '/setup.py').readlines()
+        lines = open(config.ROOT + '/' + repo + '/setup.py').readlines()
         for idx in range(0, len(lines)):
                 if lines[idx].startswith("VERSION='"):
                         lines[idx] = "VERSION='%s'\n" % version
                         print(lines[idx][:-1])
                         break
-        open(ROOT + '/' + repo + '/setup.py', "w+").write(''.join(lines))
+        open(config.ROOT + '/' + repo + '/setup.py', "w+").write(''.join(lines))
         files.append('setup.py')
-        lines = open(ROOT + '/' + repo + '/PKG-INFO').readlines()
+        lines = open(config.ROOT + '/' + repo + '/PKG-INFO').readlines()
         for idx in range(0, len(lines)):
                 if lines[idx].startswith("Version: "):
                         lines[idx] = "Version: %s\n" % version
                         print(lines[idx][:-1])
                         break
-        open(ROOT + '/' + repo + '/PKG-INFO', "w+").write(''.join(lines))
+        open(config.ROOT + '/' + repo + '/PKG-INFO', "w+").write(''.join(lines))
         files.append('PKG-INFO')
-    os.chdir(ROOT + '/' + repo)
+    os.chdir(config.ROOT + '/' + repo)
     for file in files:
         if os.system("git add %s" % file):
             raise ValueError, "git add %s" % file
@@ -271,7 +271,7 @@ def release(argv):
             repos.remove('alsa-kmirror')
     if 'alsa-driver' in repos:
             print('Updating alsa-kernel.git/include/sound/version.h...')
-            os.chdir(ROOT + '/' + 'alsa-kernel')
+            os.chdir(config.ROOT + '/' + 'alsa-kernel')
             if os.system('git checkout master'):
                     raise ValueError, "git checkout master"
             if os.system('git pull origin master'):
@@ -1025,7 +1025,6 @@ CMDS=[
 ]
  
 def main():
-    global ROOT
     if os.path.exists(config.ROOT + '/../alsa-driver'):
         config.ROOT = os.path.abspath(config.ROOT + '/..')
     opts = ''
