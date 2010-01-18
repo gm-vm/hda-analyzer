@@ -633,7 +633,7 @@ def root(argv):
     if argv == None:
         eprint('Specify root directory.')
         sys.exit(1)
-    config.ROOT=os.path.abspath(argv[0])
+    config.ROOT=os.path.abspath(argv)
 
 def verbose(argv):
     config.VERBOSE=True
@@ -1049,8 +1049,8 @@ def kmerge(argv=''):
             if os.system(git0 + ' checkout ' + mbranch):
                 if os.system(git0 + ' checkout linux-2.6'):
                     raise ValueError, 'checkout linux-2.6'
-            if os.system(git0 + ' checkout -b ' + mbranch):
-                raise ValueError, 'checkout -b ' + mbranch
+                if os.system(git0 + ' checkout -b ' + mbranch):
+                    raise ValueError, 'checkout -b ' + mbranch
             checkout = True
         if os.system(git0 + ' pull ' + url + ' ' + branch):
             raise ValueError, ' pull ' + url + ' ' + branch
