@@ -24,6 +24,26 @@ from comments import COMMENT_MAP
 VERSION="2.0"
 
 PROGRAM = sys.argv[0]
+BACKGROUND = None
+
+def sendmail(to, subj, body, cc=None, from1='noreply@alsa-project.org'):
+    from time import time
+    from smtplib import SMTP
+    from email.MIMEText import MIMEText
+    from email.Header import Header
+    if type(to) == type(''):
+      to = [to]
+    msg = MIMEText(body.encode('utf8'), 'plain', 'UTF-8')
+    msg['Subject'] = Header(subj.encode('utf8'), 'UTF-8')
+    msg['Message-Id'] = '<alsatool%s@alsa-project.org' % time()
+    msg['From'] = from1
+    msg['To'] = to[0]
+    if cc:
+      msg['Cc'] = cc.join(', ')
+    s = SMTP()
+    s.connect(config.SMTP_SERVER)
+    s.sendmail(from1, to, msg.as_string())
+    s.close()
 
 def selectrepos(repos):
     if repos is None or len(repos) == 0:
@@ -31,7 +51,7 @@ def selectrepos(repos):
     else:
         neg = repos[0][0] == '-'
         if neg:
-          negres = config.REPOSITORIES
+          negres = config.REPOSITORIES[:]
         for repo in repos:
             if (neg and repo[0] != '-') or \
                   (not neg and repo[0] == '-'):
@@ -67,12 +87,12 @@ def diff(argv=None):
     for repo in repos:
         if not first:
             print
-    first = False
-    print("%s" % repo)
-    print("*"*len(repo))
-    pull([repo])
-    if git_system(repo, "--no-pager diff origin/master..master"):
-        raise ValueError, "diff %s" % repo
+        first = False
+        print("%s" % repo)
+        print("*"*len(repo))
+        pull([repo])
+        if git_system(repo, "--no-pager diff origin/master..master"):
+            raise ValueError, "diff %s" % repo
 
 def pull(argv=None):
     repos = selectrepos(argv)
@@ -80,7 +100,7 @@ def pull(argv=None):
         if git_system(repo, "checkout master"):
             raise ValueError, "checkout %s" % repo
         os.chdir(config.ROOT + '/' + repo)
-        if git_system(repo, "%s pull origin master"):
+        if git_system(repo, "pull origin master"):
             raise ValueError, "pull %s" % repo
 
 def push(argv=None):
@@ -133,28 +153,28 @@ def showchanges1(repos, tag=None):
     for repo in repos:
         if repo == 'alsa':
             continue
-    res[repo] = []
-    mytag = tag
-    if not mytag:
-	tags = version_sort(os.popen("%s tag" % git(repo)).readlines())
-	if not tags:
-	    raise ValueError, "cannot obtain tags for repo %s" % repo
-	mytag = tags[-1]
+        res[repo] = []
+        mytag = tag
+        if not mytag:
+            tags = version_sort(os.popen("%s tag" % git(repo)).readlines())
+            if not tags:
+                raise ValueError, "cannot obtain tags for repo %s" % repo
+            mytag = tags[-1]
         fp = os.popen("%s diff --stat %s..HEAD" % (git(repo), mytag))
-	while 1:
-	    line = fp.readline()
-	    if not line or line.find('|') <= 0:
-		break
+        while 1:
+            line = fp.readline()
+            if not line or line.find('|') <= 0:
+                break
             a, b = line.split('|')
             a = a.strip()
             if a in ['.hgignore', '.hgtags']:
-		continue
+                continue
             if a.endswith('.gitignore'):
-		continue
-            if VERBOSE:
-		print(' ', line.strip())
+                continue
+            if config.VERBOSE:
+                print(' ', line.strip())
             res[repo].append(a)
-            del fp
+        del fp
     return res
 
 def showchanged(argv=None):
@@ -167,7 +187,7 @@ def showchanged(argv=None):
     res = showchanges1(repos, tag)
     for repo in res:
         print('Repository %s has %s changed files' % (repo, len(res[repo])))
-        if VERBOSE:
+        if config.VERBOSE:
             print(' ', line.strip())
 
 def release1(repo, tag):
@@ -331,7 +351,7 @@ def _merge_members(members, module='alsa-driver', nice=False):
             while file != '':
                     result1 = mgo(file, module)
                     if result1 == 'ERROR':
-                            GERRORS += 1
+                            config.GERRORS += 1
                             str = 'Cannot identify file "%s" from module %s' % (file, module)
                             fp = open("/tmp/changes-log.txt", "a+")
                             fp.write(str + "\n")
@@ -424,7 +444,7 @@ def changes(argv):
                             if not res[module].has_key(mem):
                                     res[module][mem] = []
                             res[module][mem].append(change)
-                    if GERRORS > 0:
+                    if config.GERRORS > 0:
                             print('Bailing out...')
                             sys.exit(1);
             return res
@@ -483,7 +503,8 @@ def changes(argv):
             sys.exit(1)
 
     changes = []
-    fullset = REPOSITORIES
+    fullset = config.REPOSITORIES
+
     fromrev = {}
     
     p = re.compile('.*[a-z]+')
@@ -559,7 +580,7 @@ def changes(argv):
                                                     log = log[9:]
                                             elif log[:8] == 'Summary:':
                                                     log = log[8:]
-                                            print(': %s' % esc(log[:-1]))
+                                            print(': %s' % esc(log))
     for rev in groups:
             str = '=Detailed changelog between %s and %s releases=' % (rev_to_dot(rev), rev_to_dot(rev2))
             print(str)
@@ -579,7 +600,9 @@ def changes(argv):
                                                             continue
                                                     if l[:13] == "Patch-Level: ":
                                                             continue
-                                                    print(': %s %s' % (first, esc(l[:-1])))
+                                                    if l[:15].lower() == "signed-off-by: ":
+                                                            continue
+                                                    print(': %s %s' % (first, esc(l)))
                                                     first = " "
     print('</text>')
     print('</revision>')
@@ -591,7 +614,8 @@ def usage(code=0, msg=''):
     print('Where options is:')
     for opt in OPTS:
         print
-        print("\t-%s %s" % (opt[0].replace(':', ''), opt[3]))
+        if opt[0]:
+            print("\t-%s %s" % (opt[0].replace(':', ''), opt[3]))
         print("\t--%s %s" % (opt[1].replace('=', ''), opt[3]))
         print("\t\t%s" % opt[4].replace('\n', '\t\t'))
     print('')
@@ -612,8 +636,7 @@ def root(argv):
     config.ROOT=os.path.abspath(argv[0])
 
 def verbose(argv):
-    global VERBOSE
-    VERBOSE=True
+    config.VERBOSE=True
 
 def extpick(argv, edit=False, sign=False, interactive=True):
     if argv[0] in ['-s', '--signoff']:
@@ -804,14 +827,22 @@ def import_(argv):
                 do_blacklist(l1)
     return 0
 
-def getorigin(repo = 'alsa-kernel'):
+def getgitfile(url, file, size=1024):
+    from urllib import splithost
     from httplib import HTTP
-    h = HTTP('git.alsa-project.org')
-    h.putrequest('GET', 'http://git.alsa-project.org/http/%s.git/refs/heads/master' % repo)
+    if not url.startswith('http:'):
+      raise ValueError, "URL %s" % url
+    host, selector = splithost(url[5:])
+    h = HTTP(host)
+    h.putrequest('GET', url + '/' + file)
     h.endheaders()
     h.getreply()
-    origin = h.getfile().read(1024)
+    res = h.getfile().read(size)
     h.close()
+    return res
+
+def getorigin(repo = 'alsa-kernel'):
+    origin = getgitfile('http://git.alsa-project.org/http/%s.git' % repo, 'refs/heads/master')
     origin = origin.strip()
     if len(origin) != 40:
         raise ValueError, "git.alsa-project.org is down?"
@@ -909,7 +940,7 @@ def kimport(argv=None):
     for repo in repos:
         print('Trying to import patches from %s/%s' % (repo, repos[repo]))
         rev = os.popen("git rev-parse %s 2> /dev/null" % repo)
-        if rev:
+        if rev and not repos[repo] in ["-", "local"]:
             if os.system("git checkout %s" % repo):
                  raise ValueError, "git checkout %s" % repo
             if os.system("git pull %s %s" % (repo, repos[repo])):
@@ -998,10 +1029,43 @@ def ddiff(argv=''):
         branch = b
     return compare_trees('alsa-kmirror', 'master', repo, branch)
 
+def kmerge(argv=''):
+    os.chdir(config.ROOT + '/alsa-kernel')
+    git0 = 'git '
+    checkout = False
+    for url, branch, lbranch, web in config.GIT_MERGE_REPOS:
+        lbranch = 'alsamerge/' + lbranch
+        ref = getgitfile(web, 'refs/heads/' + branch)
+        try:
+            lref = open('.git/refs/heads/' + lbranch).read(1024)
+        except:
+            lref = ''
+        if not ref:
+            raise ValueError, 'get ref ' + web
+        if ref == lref:
+            continue
+        if not checkout:
+            mbranch = 'alsamerge/master'
+            if os.system(git0 + ' checkout ' + mbranch):
+                if os.system(git0 + ' checkout linux-2.6'):
+                    raise ValueError, 'checkout linux-2.6'
+            if os.system(git0 + ' checkout -b ' + mbranch):
+                raise ValueError, 'checkout -b ' + mbranch
+            checkout = True
+        if os.system(git0 + ' pull ' + url + ' ' + branch):
+            raise ValueError, ' pull ' + url + ' ' + branch
+        if os.system(git0 + ' branch -f ' + lbranch + ' ' + ref):
+            raise ValueError, ' branch ' + lbranch + ' ' + ref
+
+def background(argv=''):
+    global BACKGROUND
+    BACKGROUND=argv
+
 OPTS=[
     ['h', 'help', usage, '', 'Print this help'],
     ['r', 'root', root, '<GIT root dir>', 'Set GIT root directory (default is %s)' % config.ROOT],
-    ['v', 'verbose', verbose, '', 'Set verbose mode']
+    ['v', 'verbose', verbose, '', 'Set verbose mode'],
+    [None, 'background', background, '<e-mail>', 'Run in background mode and send output to e-mail on error']
 ]
 CMDS=[
     ['list', xlist, '', 'Show ALSA repository names'],
@@ -1021,16 +1085,19 @@ CMDS=[
     ['dimport', dimport, '[remote/branch]', 'Import changes to alsa-kmirror tree.'],
     ['ddiff', ddiff, '[remote/branch]', 'Show diff between alsa-kmirror tree and specified repo/branch.'],
     ['tolinus', tolinus, 'branch', 'Send a merge request for given branch to linus'],
-    ['compile', compile, '', 'Compile all ALSA packages from actual snapshot (compilation test)']
+    ['compile', compile, '', 'Compile all ALSA packages from actual snapshot (compilation test)'],
+    ['kmerge', kmerge, '', 'Merge trees for all ALSA developers']
 ]
  
 def main():
+    keep_args = sys.argv[:]
     if os.path.exists(config.ROOT + '/../alsa-driver'):
         config.ROOT = os.path.abspath(config.ROOT + '/..')
     opts = ''
     lopts = []
     for opt in OPTS:
-        opts += opt[0]
+        if opt[0]:
+            opts += opt[0]
         lopt = opt[1]
         if opt[3] != '':
             opts += ':'
@@ -1042,11 +1109,31 @@ def main():
         usage(1, msg)
     for opt, arg in opts:
         for xopt in OPTS:
-            if opt in ("-" + xopt[0], "-" + xopt[1]):
+            if xopt[0] and opt in ("-" + xopt[0], "--" + xopt[1]):
+                xopt[2](arg)
+            elif opt in ("--" + xopt[1]):
                 xopt[2](arg)
     if not args:
         eprint("Command not specified, for help type '%s -h'" % PROGRAM[PROGRAM.rfind('/')+1:])
         sys.exit(1)
+    if BACKGROUND:
+        args = keep_args
+        idx = 0
+        while 1:
+            if args[idx].startswith('--background='):
+                del args[idx]
+                break
+            if args[idx].startswith('--background'):
+                del args[idx]
+                del args[idx]
+                break
+            idx += 1
+        fp = os.popen(' '.join(args) + ' 2>&1')
+        res = fp.read(1024*1024)
+        code = fp.close()
+        if code and res:
+            sendmail(to=BACKGROUND, subj='**ALSA GIT Merge Problem**', body=res)
+        sys.exit(0)
     for cmd in CMDS:
         if cmd[0] == args[0]:
             if len(args) < 2:
