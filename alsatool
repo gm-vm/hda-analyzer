@@ -633,7 +633,7 @@ def root(argv):
     if argv == None:
         eprint('Specify root directory.')
         sys.exit(1)
-    config.ROOT=os.path.abspath(argv[0])
+    config.ROOT=os.path.abspath(argv)
 
 def verbose(argv):
     config.VERBOSE=True
@@ -1033,6 +1033,7 @@ def kmerge(argv=''):
     os.chdir(config.ROOT + '/alsa-kernel')
     git0 = 'git '
     checkout = False
+    changes = 0
     for url, branch, lbranch, web in config.GIT_MERGE_REPOS:
         lbranch = 'alsamerge/' + lbranch
         ref = getgitfile(web, 'refs/heads/' + branch)
@@ -1049,13 +1050,19 @@ def kmerge(argv=''):
             if os.system(git0 + ' checkout ' + mbranch):
                 if os.system(git0 + ' checkout linux-2.6'):
                     raise ValueError, 'checkout linux-2.6'
-            if os.system(git0 + ' checkout -b ' + mbranch):
-                raise ValueError, 'checkout -b ' + mbranch
+                if os.system(git0 + ' checkout -b ' + mbranch):
+                    raise ValueError, 'checkout -b ' + mbranch
             checkout = True
         if os.system(git0 + ' pull ' + url + ' ' + branch):
             raise ValueError, ' pull ' + url + ' ' + branch
         if os.system(git0 + ' branch -f ' + lbranch + ' ' + ref):
             raise ValueError, ' branch ' + lbranch + ' ' + ref
+        if os.system(git0 + ' push -f origin ' + lbranch):
+            raise ValueError, ' push -f origin ' + lbranch
+        changes += 1
+    if changes > 0:
+        if os.system(git0 + ' push -f origin alsamerge/master'):
+            raise ValueError, ' push -f origin alsamerge/master'
 
 def background(argv=''):
     global BACKGROUND
