@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2008 by Jaroslav Kysela <perex@perex.cz>
+# Copyright (c) 2008-2010 by Jaroslav Kysela <perex@perex.cz>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@ import gobject
 import gtk
 import pango
 from errno import EAGAIN
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, STDOUT
 from fcntl import fcntl, F_SETFL, F_GETFL
 from signal import SIGKILL
 import os
@@ -117,7 +117,7 @@ class Monitor(gtk.Window):
       self.generate_sound()
 
   def __channels_change(self, button, idx):
-    if self.channels != idx or self.record.p == None:
+    if self.channels != idx or self.record_p == None:
       self.set_text('Switching to record...')
       self.channels = idx
       self.generate_cleanup()
@@ -152,7 +152,7 @@ class Monitor(gtk.Window):
 	       "-c", str(channels),
 	       "-s", str(self.channel + 1)]
     p = Popen(self.cmd,
-    	      shell=False, bufsize=0, stdin=PIPE, stdout=PIPE, stderr=PIPE,
+    	      shell=False, bufsize=0, stdin=None, stdout=PIPE, stderr=PIPE,
 	      close_fds=True)
     for fd in [p.stdout.fileno(), p.stderr.fileno()]:
       set_fd_nonblocking(fd)
@@ -192,6 +192,7 @@ class Monitor(gtk.Window):
   def generate_io_stdout(self, source, condition):
     if condition & gobject.IO_IN:
       self.generate_stdout += source.read(1024)
+      self.set_text(' '.join(self.cmd) + '\n\n' + self.generate_stdout)
       return True
 
   def generate_io_stderr(self, source, condition):
@@ -205,7 +206,7 @@ class Monitor(gtk.Window):
 	       "-f", "dat", "-c", str(self.channels),
 	       "-t", "raw", "-vvv", "/dev/null"]
     p = Popen(self.cmd,
-    	      shell=False, bufsize=0, stdin=PIPE, stdout=PIPE, stderr=PIPE,
+    	      shell=False, bufsize=0, stdin=None, stdout=PIPE, stderr=PIPE,
 	      close_fds=True)
     for fd in [p.stdout.fileno(), p.stderr.fileno()]:
       set_fd_nonblocking(fd)
