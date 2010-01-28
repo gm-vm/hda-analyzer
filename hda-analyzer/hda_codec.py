@@ -706,6 +706,7 @@ class HDACodec:
   revision_id = None
 
   def __init__(self, card=0, device=0):
+    self.hwaccess = True
     if type(1) == type(card):
       self.device = device
       self.card = card
@@ -805,7 +806,7 @@ class HDACodec:
 
     total, nid = self.get_sub_nodes(AC_NODE_ROOT)
     for i in range(total):
-      func = self.param_read(nid, PARAMS['FUNCTION_TYPE'])
+      self.function_id = func = self.param_read(nid, PARAMS['FUNCTION_TYPE'])
       if (func & 0xff) == 0x01:		# audio group
         self.afg = nid
       elif (func & 0xff) == 0x02:	# modem group
@@ -918,7 +919,10 @@ class HDACodec:
 
     if not self.afg and not self.mfg:
       self.analyze()
-    str = 'Vendor Id: 0x%x\n' % self.vendor_id
+    str = 'Codec: %s\n' % self.name
+    str += 'Address: %i\n' % self.device
+    str += 'Function Id: 0x%x\n' % self.function_id
+    str += 'Vendor Id: 0x%x\n' % self.vendor_id
     str += 'Subsystem Id: 0x%x\n' % self.subsystem_id
     str += 'Revision Id: 0x%x\n' % self.revision_id
     if self.mfg:
@@ -1098,6 +1102,7 @@ class HDACodec:
     if node.lr_swap: str += " R/L"
     if node.cp_caps: str += " CP"
     str += '\n'
+    str += self.dump_node_extra(node)
     if node.in_amp:
       str += "  Amp-In caps: "
       str += print_amp_caps(node.amp_caps_in)
@@ -1133,6 +1138,9 @@ class HDACodec:
     if hasattr(node, 'realtek_coeff_proc'):
       str += print_realtek_coef(node)
     return str
+
+  def dump_node_extra(node):
+    return ''
 
 def HDA_card_list():
   from dircache import listdir

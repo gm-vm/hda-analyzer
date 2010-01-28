@@ -12,16 +12,27 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 
+"""
+hda_analyzer - a tool to analyze HDA codecs widgets and connections
+
+Usage: hda_analyzer [[codec_proc] ...]
+
+    codec_proc might specify multiple codec files per card:
+        codec_proc_file1+codec_proc_file2
+    or codec_proc file might be a dump from alsa-info.sh
+"""
+
+import sys
 import gobject
 import gtk
 import pango
 
 DIFF_FILE = "/tmp/hda-analyze.diff"
 
-from dircache import listdir
 from hda_codec import HDACodec, HDA_card_list, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS
+from hda_proc import HDACodecProc
 
 CODEC_TREE = {}
 DIFF_TREE = {}
@@ -30,23 +41,44 @@ def read_nodes2(card, codec):
   try:
     c = HDACodec(card, codec)
   except OSError, msg:
-    if msg[0] == 16:
+    if msg[0] == 13:
+      print "Codec %i/%i unavailable - permissions..." % (card, codec)
+    elif msg[0] == 16:
       print "Codec %i/%i is busy..." % (card, codec)
+    elif msg[0] != 2:
+      print "Codec %i/%i access problem (%s)" % repr(msg)
     return
   c.analyze()
+  if not card in CODEC_TREE:
+    CODEC_TREE[card] = {}
+    DIFF_TREE[card] = {}
   CODEC_TREE[card][codec] = c
   DIFF_TREE[card][codec] = c.dump()
 
-def read_nodes():
+def read_nodes3(card, codec, proc_file):
+  c = HDACodecProc(card, codec, proc_file)
+  c.analyze()
+  if not card in CODEC_TREE:
+    CODEC_TREE[card] = {}
+    DIFF_TREE[card] = {}
+  CODEC_TREE[card][codec] = c
+  DIFF_TREE[card][codec] = c.dump()
+
+def read_nodes(proc_files):
   l = HDA_card_list()
   for c in l:
-    CODEC_TREE[c.card] = {}
-    DIFF_TREE[c.card] = {}
     for i in range(4):
       read_nodes2(c.card, i)
+  card = 1000
+  for f in proc_files:
+    a = f.split('+')
+    idx = 0
+    for i in a:
+      read_nodes3(card, idx, i)
+      idx += 1
   cnt = 0
-  for c in l:
-    if len(CODEC_TREE[c.card]) > 0:
+  for c in CODEC_TREE:
+    if len(CODEC_TREE[c]) > 0:
       cnt += 1
   return cnt    
 
@@ -60,13 +92,17 @@ def do_diff1(codec, diff1):
 
 def do_diff():
   diff = ''
+  hw = 0
   for card in CODEC_TREE:
     for codec in CODEC_TREE[card]:
-      diff += do_diff1(CODEC_TREE[card][codec], DIFF_TREE[card][codec])
+      c = CODEC_TREE[card][codec]
+      if c.hwaccess:
+        hw += 1
+      diff += do_diff1(c, DIFF_TREE[card][codec])
   if len(diff) > 0:
     open(DIFF_FILE, "w+").write(diff + '\n')
     print "Diff was stored to: %s" % DIFF_FILE
-  return diff and True or False
+  return (diff and hw > 0) and True or False
 
 (
     TITLE_COLUMN,
@@ -791,7 +827,7 @@ mailing list, too.
     def build_caps(title, caps):
       frame = gtk.Frame(title)
       frame.set_border_width(4)
-      if caps:
+      if caps and caps.ofs != None:
         text_view = self.__new_text_view()
         str = 'Offset:\t\t %d\n' % caps.ofs
         str += 'Number of steps: %d\n' % caps.nsteps
@@ -809,7 +845,7 @@ mailing list, too.
     hbox = gtk.HBox(False, 0)
     c = build_caps('Global Input Amplifier Caps', codec.amp_caps_in)
     hbox.pack_start(c)
-    c = build_caps('Global Output Amplifier Caps',codec.amp_caps_out)
+    c = build_caps('Global Output Amplifier Caps', codec.amp_caps_out)
     hbox.pack_start(c)
 
     return hbox
@@ -890,7 +926,10 @@ mailing list, too.
     w.add_with_viewport(mframe)
 
 def main():
-  if read_nodes() == 0:
+  if sys.argv[1] in ('-h', '-help', '--help'):
+    print __doc__ % globals()
+    sys.exit(0)
+  if read_nodes(sys.argv[1:]) == 0:
     print "No HDA codecs were found or insufficient priviledges for "
     print "/dev/snd/controlC* and /dev/snd/hwdepC*D* device files."
     print
