@@ -300,7 +300,12 @@ class ProcNode(HDABaseProc):
 
   def add_connection(self, line, conn):
     line, count = self.decodeintw(line)
-    conn = conn.strip()
+    res = 0
+    if conn.startswith('    '):
+      conn = conn.strip()
+      res = 1
+    else:
+      conn = ''
     conns = []
     sel = -1
     while len(conn):
@@ -312,6 +317,7 @@ class ProcNode(HDABaseProc):
       self.wrongfile('connections %s != %s' % (count, len(conns)))
     self.connections = conns
     self.add_verb(VERBS['GET_CONNECT_SEL'], sel)
+    return res
     
   def add_unsolicited(self, line):
     line, tag = self.decodeintw(line, 'tag=')
@@ -526,8 +532,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
         elif line.startswith('  Amp-Out vals: '):
           node.add_ampvals(line[17:], HDA_OUTPUT) 
         elif line.startswith('  Connection: '):
-          node.add_connection(line[13:], lines[idx+1])
-          idx += 1
+          idx += node.add_connection(line[13:], lines[idx+1])
         elif line == '  PCM:':
           node.add_pcm(lines[idx+1], lines[idx+2], lines[idx+3])
           idx += 3
@@ -544,6 +549,8 @@ class HDACodecProc(HDACodec, HDABaseProc):
         elif line.startswith('    DefAssociation = '):
           pass
         elif line.startswith('    Misc = '):
+          pass
+        elif line.startswith('  Delay: '):
           pass
         elif line.startswith('  Pin-ctls: '):
           node.add_pinctls(line[12:])

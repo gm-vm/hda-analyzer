@@ -19,9 +19,12 @@ Usage: hda_analyzer [[codec_proc] ...]
 
     codec_proc might specify multiple codec files per card:
         codec_proc_file1+codec_proc_file2
-    or codec_proc file might be a dump from alsa-info.sh
+    or codec_proc might be a dump from alsa-info.sh
+    or codec_proc might be a hash for codec database at www.alsa-project.org
+    or codec_proc might be a URL for codec dump or alsa-info.sh dump
 """
 
+import os
 import sys
 import gobject
 import gtk
@@ -36,6 +39,20 @@ from hda_proc import DecodeProcFile, HDACodecProc
 
 CODEC_TREE = {}
 DIFF_TREE = {}
+
+def gethttpfile(url, size=1024*1024):
+  from urllib import splithost
+  from httplib import HTTP
+  if not url.startswith('http:'):
+    raise ValueError, "URL %s" % url
+  host, selector = splithost(url[5:])
+  h = HTTP(host)
+  h.putrequest('GET', url)
+  h.endheaders()
+  h.getreply()
+  res = h.getfile().read(size)
+  h.close()
+  return res
 
 def read_nodes2(card, codec):
   try:
@@ -74,7 +91,12 @@ def read_nodes(proc_files):
     a = f.split('+')
     idx = 0
     if len(a) == 1:
-      proc_file = DecodeProcFile(a[0])
+      if a[0].startswith('http://'):
+        proc_file = gethttpfile(a[0])
+      elif len(a[0]) == 40 and not os.path.exists(a[0]):
+        proc_file = gethttpfile('http://www.alsa-project.org/db/?f=' + a[0])
+      else:
+        proc_file = DecodeProcFile(a[0])
       if proc_file.find("ALSA Information Script") > 0:
         a = []
         pos = proc_file.find('HDA-Intel Codec information')
