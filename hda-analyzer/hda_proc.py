@@ -173,14 +173,24 @@ class ProcNode(HDABaseProc):
     codec.proc_nids[nid] = self
     self.nid = nid
     self.wcaps = wcaps
+    self.wtype = (self.wcaps >> 20) & 0x0f
+    self.wtype_id = WIDGET_TYPE_IDS[self.wtype]
     self.device = None
     self.amp_vals = [[], []]
     self.connections = []
     self.params = {}
     self.verbs = {}
     self.controls = []
+    if wcaps & (1 << 7):
+      self.add_verb(VERBS['GET_UNSOLICITED_RESPONSE'], 0)
+    if wcaps & (1 << 9):
+      self.add_verb(VERBS['GET_DIGI_CONVERT_1'], 0)
     if wcaps & (1 << 10):
       self.add_param(PARAMS['POWER_STATE'], 0)
+    if self.wtype_id in ['AUD_IN', 'AUD_OUT']:
+      self.add_verb(VERBS['GET_CONV' ], 0)
+    if self.wtype_id == 'AUD_IN':
+      self.add_verb(VERBS['GET_SDI_SELECT'], 0)
 
   def rw(self, verb, param):
     if verb in self.verbs:
@@ -194,7 +204,12 @@ class ProcNode(HDABaseProc):
     elif verb == VERBS['GET_AMP_GAIN_MUTE']:
       dir = param & (1<<15) and HDA_OUTPUT or HDA_INPUT
       idx = param & (1<<13) and 1 or 0
-      return self.amp_vals[dir][param & 0x7f][idx]
+      val = param & 0x7f
+      if val >= len(self.amp_vals[dir]):
+        print "AMP index out of range (%s >= %s)" % (val, len(self.amp_vals[dir]))
+        while val >= len(self.amp_vals[dir]):
+          self.amp_vals[dir].append([128, 128])
+      return self.amp_vals[dir][val][idx]
     elif verb == VERBS['SET_AMP_GAIN_MUTE']:
       dir = param & (1<<15) and HDA_OUTPUT or HDA_INPUT
       idx = (param >> 8) & 0x0f
@@ -507,8 +522,12 @@ class HDACodecProc(HDACodec, HDABaseProc):
         res = writeval(res, idx1, 'unsol')
       return idx + 1
 
-    self.proc_afd = 1
+    self.proc_afg = -1
     self.proc_nids = {}
+    self.proc_function_id = 0
+    self.proc_vendor_id = 0
+    self.proc_subsystem_id = 0
+    self.proc_revision_id =0
     lines = str.splitlines()
     idx = 0
     idx, self.proc_codec_id = lookfor(idx, 'Codec: ')
@@ -527,14 +546,15 @@ class HDACodecProc(HDACodec, HDABaseProc):
       self.wrongfile('id strings expected')
     nomfg = lines[idx].strip() == 'No Modem Function Group found'
     if nomfg:
+      self.proc_afg = 1
       idx += 1
     elif lines[idx].startswith('Default PCM:'):
-      pass
+      self.proc_afg = 1
     else:
       if self.proc_function_id is None:
         self.proc_function_id = 2
       idx, self.proc_modem_grp = lookforint(idx, 'Modem Function Group: ')
-      self.proc_afd = -1
+      self.proc_afg = -1
       return
     if self.proc_function_id is None:
       self.proc_function_id = 1
@@ -669,7 +689,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
         return self.proc_subsystem_id
       elif param == PARAMS['REV_ID']:
         return self.proc_revision_id
-    elif nid == self.proc_afd:
+    elif nid == self.proc_afg:
       if param == PARAMS['FUNCTION_TYPE']:
         return self.proc_function_id
       elif param == PARAMS['PCM']:
@@ -683,16 +703,20 @@ class HDACodecProc(HDACodec, HDABaseProc):
       elif param == PARAMS['GPIO_CAP']:
         return self.proc_gpio_cap
     else:
+      if nid is None:
+        return 0
       node = self.proc_nids[nid]
       return node.param_read(param)
     raise ValueError, "unimplemented param_read(0x%x, 0x%x)" % (nid, param)
 
   def get_sub_nodes(self, nid):
     if nid == AC_NODE_ROOT:
-      return self.proc_afd, 1
-    elif nid == self.proc_afd:
+      return self.proc_afg, 1
+    elif nid == self.proc_afg:
       if self.proc_nids:
         return len(self.proc_nids), self.proc_nids.keys()[0]
+      return 0, 0
+    elif nid is None:
       return 0, 0
     raise ValueError, "unimplemented get_sub_nodes(0x%x)" % nid
 
@@ -704,13 +728,17 @@ class HDACodecProc(HDACodec, HDABaseProc):
     return get_wcap(self, nid)
 
   def rw(self, nid, verb, param):
-    if nid == self.proc_afd:
+    if nid == self.proc_afg:
       for i, j in GPIO_IDS.iteritems():
         if verb == j[0] or verb == j[1]:
           if i == 'direction':
             i = 'dir'
           return self.proc_gpio[i]
+      if verb == VERBS['GET_SUBSYSTEM_ID']:
+        return self.proc_subsystem_id
     else:
+      if nid is None:
+        return 0
       node = self.proc_nids[nid]
       return node.rw(verb, param)
     raise ValueError, "unimplemented rw(0x%x, 0x%x, 0x%x)" % (nid, verb, param)
@@ -734,7 +762,8 @@ def dotest1(base):
       file = DecodeProcFile(file)
       file = DecodeAlsaInfoFile(file)
       for a in file:
-        HDACodecProc(0, 0, a)
+        c = HDACodecProc(0, 0, a)
+        c.analyze()
 
 def dotest():
   import sys

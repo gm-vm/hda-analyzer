@@ -34,7 +34,8 @@ DIFF_FILE = "/tmp/hda-analyze.diff"
 
 from hda_codec import HDACodec, HDA_card_list, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
-                      PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS
+                      PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS, \
+                      HDA_INPUT, HDA_OUTPUT
 from hda_proc import DecodeProcFile, DecodeAlsaInfoFile, HDACodecProc
 
 CODEC_TREE = {}
@@ -527,8 +528,8 @@ mailing list, too.
   def __build_amps(self, node):
 
     def build_caps(title, caps, vals):
-      if caps and caps.ofs == None:
-        caps = node.dir == HDA_INPUT and \
+      if caps and caps.ofs is None:
+        caps = caps.dir == HDA_INPUT and \
                     node.codec.amp_caps_in or node.codec.amp_caps_out
         title += ' (Global)'
       frame = gtk.Frame(title)
