@@ -35,7 +35,7 @@ DIFF_FILE = "/tmp/hda-analyze.diff"
 from hda_codec import HDACodec, HDA_card_list, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS
-from hda_proc import DecodeProcFile, HDACodecProc
+from hda_proc import DecodeProcFile, DecodeAlsaInfoFile, HDACodecProc
 
 CODEC_TREE = {}
 DIFF_TREE = {}
@@ -94,29 +94,21 @@ def read_nodes(proc_files):
       if a[0].startswith('http://'):
         proc_file = gethttpfile(a[0])
       elif len(a[0]) == 40 and not os.path.exists(a[0]):
-        proc_file = gethttpfile('http://www.alsa-project.org/db/?f=' + a[0])
+        url = 'http://www.alsa-project.org/db/?f=' + a[0]
+        print 'Downloading contents from %s' % url
+        proc_file = gethttpfile(url)
+        if not proc_file:
+          print "HASH %s cannot be downloaded..." % a[0]
+          continue
+        else:
+          print '  Success'
       else:
         proc_file = DecodeProcFile(a[0])
-      if proc_file.find("ALSA Information Script") > 0:
-        a = []
-        pos = proc_file.find('HDA-Intel Codec information')
-        if pos >= 0:
-          proc_file = proc_file[pos:]
-          pos = proc_file.find('--startcollapse--')
-          proc_file = proc_file[pos+18:]
-          pos = proc_file.find('--endcollapse--')
-          proc_file = proc_file[:pos]
-          while 1:
-            pos = proc_file.find('\nCodec: ')
-            if pos < 0:
-              break
-            proc_file = proc_file[pos:]
-            pos = proc_file[1:].find('\nCodec: ')
-            if pos < 0:
-              pos = len(proc_file)-2
-            read_nodes3(card, idx, proc_file[:pos+2])
-            proc_file = proc_file[pos:]
-            card += 1
+      proc_file = DecodeAlsaInfoFile(proc_file)
+      for i in proc_file:
+        read_nodes3(card, idx, i)
+        card += 1
+      a = []
     for i in a:
       proc_file = DecodeProcFile(i)
       read_nodes3(card, idx, proc_file)

@@ -12,7 +12,6 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 
-from dircache import listdir
 from hda_codec import *
 
 SET_VERBS = {
@@ -48,6 +47,30 @@ def DecodeProcFile(proc_file):
       if not p is None:
         proc_file = p
   return proc_file
+
+def DecodeAlsaInfoFile(proc_file):
+  if proc_file.find("ALSA Information Script") < 0:
+    return [proc_file]
+  pos = proc_file.find('HDA-Intel Codec information')
+  if pos < 0:
+    return [proc_file]
+  proc_file = proc_file[pos:]
+  pos = proc_file.find('--startcollapse--')
+  proc_file = proc_file[pos+18:]
+  pos = proc_file.find('--endcollapse--')
+  proc_file = proc_file[:pos]
+  res = []
+  while 1:
+    pos = proc_file.find('\nCodec: ')
+    if pos < 0:
+      break
+    proc_file = proc_file[pos:]
+    pos = proc_file[1:].find('\nCodec: ')
+    if pos < 0:
+      pos = len(proc_file)-2
+    res.append(proc_file[:pos+2])
+    proc_file = proc_file[pos:]
+  return res
 
 class HDACardProc:
 
@@ -89,7 +112,7 @@ class HDABaseProc:
       return rem.strip(), res.strip()
     self.wrongfile('string decode %s' % repr(str))
 
-  def decodeintw(self, str, prefix=''):
+  def decodeintw(self, str, prefix='', forcehex=False):
     if str.startswith(prefix):
       res = str[len(prefix):].strip()
       rem = res
@@ -108,10 +131,13 @@ class HDABaseProc:
           if rem and rem[0] == a:
             rem = rem[1:]
             ok = True
+      if res and forcehex:
+        if not res.startswith('0x'):
+          res = '0x' + res
       if res.startswith('0x'):
         return rem.strip(), int(res[2:], 16)
       return rem.strip(), int(res)
-    self.wrongfile('integer decode %s' % repr(str))
+    self.wrongfile('integer decode %s (%s)' % (repr(str), repr(prefix)))
 
   def wrongfile(self, msg=''):
     raise ValueError, "wrong proc file format (%s)" % msg
@@ -273,11 +299,16 @@ class ProcNode(HDABaseProc):
     ctl.amp_dir = ctl.amp_dir == 'In' and HDA_INPUT or HDA_OUTPUT
 
   def add_ampcaps(self, line, dir):
+    line = line.strip()
+    par = PARAMS[dir == HDA_INPUT and 'AMP_IN_CAP' or 'AMP_OUT_CAP']
+    if line == 'N/A':
+      self.add_param(par, 0)
+      return
     line, ofs = self.decodeintw(line, 'ofs=')
     line, nsteps = self.decodeintw(line, 'nsteps=')
     line, stepsize = self.decodeintw(line, 'stepsize=')
     line, mute = self.decodeintw(line, 'mute=')
-    self.add_param(PARAMS[dir == HDA_INPUT and 'AMP_IN_CAP' or 'AMP_OUT_CAP'],
+    self.add_param(par,
                (ofs & 0x7f) | ((nsteps & 0x7f) << 8) | \
                ((stepsize & 0x7f) << 16) | ((mute & 1) << 31))
 
@@ -300,6 +331,8 @@ class ProcNode(HDABaseProc):
 
   def add_connection(self, line, conn):
     line, count = self.decodeintw(line)
+    if count == -22:	# driver was not able to read connections
+      count = 0
     res = 0
     if conn.startswith('    '):
       conn = conn.strip()
@@ -320,12 +353,17 @@ class ProcNode(HDABaseProc):
     return res
     
   def add_unsolicited(self, line):
-    line, tag = self.decodeintw(line, 'tag=')
+    line, tag = self.decodeintw(line, 'tag=', forcehex=True)
     line, enabled = self.decodeintw(line, 'enabled=')
     self.add_verb(VERBS['GET_UNSOLICITED_RESPONSE'],
                     (tag & 0x3f) | ((enabled & 1) << 7))
 
   def add_pincap(self, line):
+    line = line.strip()
+    # workaround for bad 0x08%x format string in hda_proc.c
+    a = line.split(':')
+    if line.startswith('0x08') and len(a[0]) != 10:
+      line = "0x" + line[4:]
     line, tmp1 = self.decodeintw(line, '')
     self.add_param(PARAMS['PIN_CAP'], tmp1)
 
@@ -356,11 +394,33 @@ class ProcNode(HDABaseProc):
   
   def add_powerstates(self, line):
     a = line.strip().split(' ')
-    tmp1
+    tmp1 = 0
     for b in a:
       if b in POWER_STATES:
         tmp1 |= 1 << POWER_STATES.index(b)
-    self.add_parm(PARAMS['POWER_STATE'], tmp1)
+    self.add_param(PARAMS['POWER_STATE'], tmp1)
+
+  def add_processcaps(self, line):
+    line, benign = self.decodeintw(line, 'benign=')
+    line, ncoeff = self.decodeintw(line, 'ncoeff=')
+    self.add_param(PARAMS['PROC_CAP'],
+                    (benign & 1) | ((ncoeff & 0xff) << 8))
+  
+  def add_processcoef(self, line):
+    line, coef = self.decodeintw(line, '')
+    self.add_verb(VERBS['GET_PROC_COEF'], coef)
+
+  def add_processindex(self, line):
+    line, idx = self.decodeintw(line, '')
+    self.add_verb(VERBS['GET_COEF_INDEX'], idx)
+
+  def add_volknob(self, line):
+    line, delta = self.decodeintw(line, 'delta=')
+    line, steps = self.decodeintw(line, 'steps=')
+    line, direct = self.decodeintw(line, 'direct=')
+    line, val = self.decodeintw(line, 'val=')
+    self.add_param(PARAMS['VOL_KNB_CAP'], ((delta & 1) << 7) | (steps & 0x7f))
+    self.add_verb(VERBS['GET_VOLUME_KNOB_CONTROL'], ((direct & 1) << 7) | (val & 0x7f))
 
   def dump_extra(self):
     str = ''
@@ -441,8 +501,10 @@ class HDACodecProc(HDACodec, HDABaseProc):
       res, idx1 = self.decodeintw(res, prefix)
       if res.startswith(': '):
         res = res[2:]
-      for a in ['enable', 'dir', 'wake', 'sticky', 'data', 'unsol']:
+      for a in ['enable', 'dir', 'wake', 'sticky', 'data']:
         res = writeval(res, idx1, a)
+      if res.find('unsol=') >= 0:
+        res = writeval(res, idx1, 'unsol')
       return idx + 1
 
     self.proc_afd = 1
@@ -450,6 +512,9 @@ class HDACodecProc(HDACodec, HDABaseProc):
     lines = str.splitlines()
     idx = 0
     idx, self.proc_codec_id = lookfor(idx, 'Codec: ')
+    if not self.proc_codec_id:
+      print "Proc Text Contents is not valid"
+      return
     idx, tmp = lookforint(idx, 'Address: ')
     self.device = tmp # really?
     self.proc_function_id = None
@@ -463,6 +528,8 @@ class HDACodecProc(HDACodec, HDABaseProc):
     nomfg = lines[idx].strip() == 'No Modem Function Group found'
     if nomfg:
       idx += 1
+    elif lines[idx].startswith('Default PCM:'):
+      pass
     else:
       if self.proc_function_id is None:
         self.proc_function_id = 2
@@ -473,10 +540,15 @@ class HDACodecProc(HDACodec, HDABaseProc):
       self.proc_function_id = 1
     if not lines[idx].startswith('Default PCM:'):
       self.wrongfile('default pcm expected')
-    idx, tmp1 = decodeint(idx+1, '    rates [')
-    idx, tmp2 = decodeint(idx, '    bits [')
-    self.proc_pcm_bits = (tmp1 & 0xffff) | ((tmp2 & 0xffff) << 16)
-    idx, self.proc_pcm_stream = decodeint(idx, '    formats [')
+    if lines[idx+1].strip() == "N/A":
+      idx += 2
+      self.proc_pcm_bits = 0
+      self.proc_pcm_stream = 0
+    else:
+      idx, tmp1 = decodeint(idx+1, '    rates [')
+      idx, tmp2 = decodeint(idx, '    bits [')
+      self.proc_pcm_bits = (tmp1 & 0xffff) | ((tmp2 & 0xffff) << 16)
+      idx, self.proc_pcm_stream = decodeint(idx, '    formats [')
     idx, self.proc_amp_caps_in = decodeampcap(idx, 'Default Amp-In caps: ')
     idx, self.proc_amp_caps_out = decodeampcap(idx, 'Default Amp-Out caps: ')
     self.proc_gpio = {
@@ -490,11 +562,19 @@ class HDACodecProc(HDACodec, HDABaseProc):
     self.proc_gpio_cap = 0
     if lines[idx].startswith('GPIO: '):
       idx, self.proc_gpio_cap = decodegpiocap(idx, 'GPIO: ')
-      while lines[idx].startswith('  IO['):
+      while idx < len(lines) and lines[idx].startswith('  IO['):
         idx = decodegpio(idx, '  IO[')
-    if lines[idx].strip() == 'Invalid AFG subtree':
+    if idx >= len(lines):
+      return
+    line = lines[idx].strip()
+    if line == 'Invalid AFG subtree':
       print "Invalid AFG subtree for codec %s?" % self.proc_codec_id
       return
+    while line.startswith('Power-Map: ') or \
+          line.startswith('Analog Loopback: '):
+      print 'Sigmatel specific "%s" verb ignored for the moment' % line
+      idx += 1
+      line = lines[idx].strip()
     node = None
     while idx < len(lines):
       line = lines[idx]
@@ -505,6 +585,8 @@ class HDACodecProc(HDACodec, HDABaseProc):
         self.wrongfile('node wcaps expected')
       line, wcaps = self.decodeintw(line[pos:], 'wcaps ')
       node = ProcNode(self, nid, wcaps)
+      if idx >= len(lines):
+        break
       line = lines[idx]
       while not line.startswith('Node '):
         if line.startswith('  Device: '):
@@ -532,7 +614,10 @@ class HDACodecProc(HDACodec, HDABaseProc):
         elif line.startswith('  Amp-Out vals: '):
           node.add_ampvals(line[17:], HDA_OUTPUT) 
         elif line.startswith('  Connection: '):
-          idx += node.add_connection(line[13:], lines[idx+1])
+          if idx + 1 < len(lines):
+            idx += node.add_connection(line[13:], lines[idx+1])
+          else:
+            idx += node.add_connection(line[13:], '')
         elif line == '  PCM:':
           node.add_pcm(lines[idx+1], lines[idx+2], lines[idx+3])
           idx += 3
@@ -560,6 +645,14 @@ class HDACodecProc(HDACodec, HDABaseProc):
           node.add_powerstates(line[16:])
         elif line.startswith('  Power: '):
           node.add_power(line[9:])
+        elif line.startswith('  Processing caps: '):
+          node.add_processcaps(line[19:])
+        elif line.startswith('  Processing Coefficient: '):
+          node.add_processcoef(line[26:])
+        elif line.startswith('  Coefficient Index: '):
+          node.add_processindex(line[21:])
+        elif line.startswith('  Volume-Knob: '):
+          node.add_volknob(line[15:])
         else:
           self.wrongfile(line)
         idx += 1
@@ -625,3 +718,31 @@ class HDACodecProc(HDACodec, HDABaseProc):
   def dump_node_extra(self, node):
     node = self.proc_nids[node.nid]
     return node.dump_extra()
+
+#
+# test section
+#
+
+def dotest1(base):
+  l = listdir(base)
+  for f in l:
+    file = base + '/' + f
+    if os.path.isdir(file):
+      dotest1(file)
+    else:
+      print file
+      file = DecodeProcFile(file)
+      file = DecodeAlsaInfoFile(file)
+      for a in file:
+        HDACodecProc(0, 0, a)
+
+def dotest():
+  import sys
+  if len(sys.argv) < 2:
+    raise ValueError, "Specify directory with codec dumps"
+  dotest1(sys.argv[1])
+
+if __name__ == '__main__':
+  import os
+  from dircache import listdir
+  dotest()

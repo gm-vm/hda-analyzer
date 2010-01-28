@@ -190,7 +190,9 @@ WIDGET_PINCAP_NAMES = {
   'IN': 'Input',
   'BALANCE': 'Balance',
   'HDMI': 'HDMI',
-  'EAPD': 'EAPD'
+  'EAPD': 'EAPD',
+  'DP': 'Display Port',
+  'HBR': 'Hight Bit Rate',
 }
 
 GPIO_IDS = {
@@ -420,7 +422,7 @@ class HDANode:
     self.active_connection = None
     if self.conn_list:
       self.connections = self.codec.get_connections(self.nid)
-      if not self.wtype_id in ['AUD_MIX', 'POWER']:
+      if not self.wtype_id in ['AUD_MIX', 'VOL_KNB', 'POWER']:
         self.active_connection = self.codec.rw(self.nid, VERBS['GET_CONNECT_SEL'], 0)
         if self.origin_active_connection == None:
           self.origin_active_connection = self.active_connection
@@ -450,6 +452,8 @@ class HDANode:
       if caps & (1 << 6): self.pincap.append('BALANCE')
       if caps & (1 << 7): self.pincap.append('HDMI')
       if caps & (1 << 16): self.pincap.append('EAPD')
+      if caps & (1 << 24): self.pincap.append('DP')	# display port
+      if caps & (1 << 27): self.pincap.append('HBR')
       self.pincap_vref = []
       if caps & (1 << 8): self.pincap_vref.append('HIZ')
       if caps & (1 << 9): self.pincap_vref.append('50')
@@ -1017,7 +1021,10 @@ class HDACodec:
         if (self.vendor_id >> 16) == 0x10ec:	# Realtek has different meaning
           str += " (Realtek)R/L"
         else:
+          if 'HBR' in node.pincap:
+            str += " HBR"
           str += " HDMI"
+      if 'DP' in node.pincap: str += " DP"
       if 'TRIG_REQ' in node.pincap: str += " Trigger"
       if 'IMP_SENSE' in node.pincap: str += " ImpSense"
       str += '\n'
