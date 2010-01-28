@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 URL="http://git.alsa-project.org/?p=alsa.git;a=blob_plain;f=hda-analyzer/"
-FILES=["hda_analyzer.py", "hda_codec.py"]
+FILES=["hda_analyzer.py", "hda_codec.py", "hda_proc.py"]
 
 try:
   import gobject

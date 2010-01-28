@@ -229,6 +229,8 @@ DIG1_BITS = {
   'LEVEL': 7
 }
 
+POWER_STATES = ["D0", "D1", "D2", "D3", "D3cold", "S3D3cold", "CLKSTOP", "EPSS"]
+
 class HDAAmpCaps:
 
   def __init__(self, codec, nid, dir):
@@ -497,15 +499,20 @@ class HDANode:
       self.unsol_tag = unsol & 0x3f
       self.unsol_enabled = (unsol & (1 << 7)) and True or False
     if self.power:
-      states = ["D0", "D1", "D2", "D3"]
+      pwr = self.codec.param_read(self.nid, PARAMS['POWER_STATE'])
+      self.pwr_state = pwr
+      self.pwr_states = []
+      for a in range(len(POWER_STATES)):
+        if pwr & (1 << a):
+          self.pwr_states.append(POWER_STATES[a])
       pwr = self.codec.rw(self.nid, VERBS['GET_POWER_STATE'], 0)
       self.pwr = pwr
       if self.origin_pwr == None:
         self.origin_pwr = pwr
       self.pwr_setting = pwr & 0x0f
       self.pwr_actual = (pwr >> 4) & 0x0f
-      self.pwr_setting_name = self.pwr_setting < 4 and states[self.pwr_setting] or "UNKNOWN"
-      self.pwr_actual_name = self.pwr_actual < 4 and states[self.pwr_actual] or "UNKNOWN"
+      self.pwr_setting_name = self.pwr_setting < 4 and POWER_STATES[self.pwr_setting] or "UNKNOWN"
+      self.pwr_actual_name = self.pwr_actual < 4 and POWER_STATES[self.pwr_actual] or "UNKNOWN"
     # NID 0x20 == Realtek Define Registers
     if self.codec.vendor_id == 0x10ec and self.nid == 0x20:
       self.realtek_coeff_proc = self.codec.rw(self.nid, VERBS['GET_PROC_COEF'], 0)
@@ -1057,6 +1064,9 @@ class HDACodec:
       return "  Unsolicited: tag=0x%02x, enabled=%d\n" % (node.unsol_tag, node.unsol_enabled and 1 or 0)
 
     def print_power_state(node):
+      str = ""
+      if node.pwr_states:
+        str = "  Power states: %s\n" % ' '.join(node.pwr_states)
       return "  Power: setting=%s, actual=%s\n" % (node.pwr_setting_name, node.pwr_actual_name)
 
     def print_digital_conv(node):

@@ -19,7 +19,35 @@ SET_VERBS = {
   VERBS['SET_SDI_SELECT']: VERBS['GET_SDI_SELECT'],
   VERBS['SET_PIN_WIDGET_CONTROL']: VERBS['GET_PIN_WIDGET_CONTROL'],
   VERBS['SET_CONNECT_SEL']: VERBS['GET_CONNECT_SEL'],
+  VERBS['SET_EAPD_BTLENABLE']: VERBS['GET_EAPD_BTLENABLE'],
+  VERBS['SET_POWER_STATE']: VERBS['GET_POWER_STATE'],
 }
+
+def DecodeProcFile(proc_file):
+  if len(proc_file) < 256:
+    fd = open(proc_file)
+  proc_file = fd.read(1024*1024)
+  fd.close()
+  if proc_file.find('Subsystem Id:') < 0:
+      p = None
+      try:
+        from gzip import GzipFile
+        from StringIO import StringIO
+        s = StringIO(proc_file)
+        gz = GzipFile(mode='r', fileobj=s)
+        p = gz.read(1024*1024)
+        gz.close()
+      except:
+        pass
+      if p is None:
+        try:
+          from bz2 import decompress
+          p = decompress(proc_file)
+        except:
+          pass
+      if not p is None:
+        proc_file = p
+  return proc_file
 
 class HDACardProc:
 
@@ -55,7 +83,7 @@ class HDABaseProc:
       while ok:
         ok = False
         for a in self.delim:
-          if rem[0] == a:
+          if rem and rem[0] == a:
             rem = rem[1:]
             ok = True
       return rem.strip(), res.strip()
@@ -125,6 +153,8 @@ class ProcNode(HDABaseProc):
     self.params = {}
     self.verbs = {}
     self.controls = []
+    if wcaps & (1 << 10):
+      self.add_param(PARAMS['POWER_STATE'], 0)
 
   def rw(self, verb, param):
     if verb in self.verbs:
@@ -201,7 +231,7 @@ class ProcNode(HDABaseProc):
       'Pro': DIG1_BITS['PROFESSIONAL'],
       'GenLevel': DIG1_BITS['LEVEL']
     }
-    bits = 0
+    xbits = 0
     a = line.split(' ')
     for b in a:
       b = b.strip()
@@ -209,8 +239,8 @@ class ProcNode(HDABaseProc):
         return
       if not b in bits:
         self.wrongfile('unknown dig1 bit %s' % repr(b))
-      bits |= 1 << bits[b]
-    self.add_verb(VERBS['GET_DIGI_CONVERT_1'], bits)
+      xbits |= 1 << bits[b]
+    self.add_verb(VERBS['GET_DIGI_CONVERT_1'], xbits)
 
   def add_digitalcategory(self, line):
     line, res = self.decodeintw(line)
@@ -301,6 +331,31 @@ class ProcNode(HDABaseProc):
     line, tmp1 = self.decodeintw(line, '')
     self.add_verb(VERBS['GET_PIN_WIDGET_CONTROL'], tmp1)
 
+  def add_eapd(self, line):
+    line, tmp1 = self.decodeintw(line, '')
+    self.add_verb(VERBS['GET_EAPD_BTLENABLE'], tmp1)
+
+  def add_power(self, line):
+    line, setting = self.decodestrw(line, 'setting=')
+    line, actual = self.decodestrw(line, 'actual=')
+    if setting in POWER_STATES:
+      setting = POWER_STATES.index(setting)
+    else:
+      self.wrongfile('power setting %s' % setting)
+    if actual in POWER_STATES:
+      actual = POWER_STATES.index(actual)
+    else:
+      self.wrongfile('power actual %s' % actual)
+    self.add_verb(VERBS['GET_POWER_STATE'], (setting & 0x0f) | ((actual & 0x0f) << 4))
+  
+  def add_powerstates(self, line):
+    a = line.strip().split(' ')
+    tmp1
+    for b in a:
+      if b in POWER_STATES:
+        tmp1 |= 1 << POWER_STATES.index(b)
+    self.add_parm(PARAMS['POWER_STATE'], tmp1)
+
   def dump_extra(self):
     str = ''
     if self.device:
@@ -316,10 +371,6 @@ class HDACodecProc(HDACodec, HDABaseProc):
     self.card = card
     self.device = device
     self.mcard = HDACardProc(card)
-    if len(proc_file) < 256:
-      fd = open(proc_file)
-      proc_file = fd.read(1024*1024)
-      fd.close()
     self.proc_codec_id = None
     self.parse(proc_file)
     if self.proc_codec_id:
@@ -377,10 +428,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
     
       def writeval(str, idx, var):
         res, val = self.decodeintw(str, var + '=')
-        if not self.proc_gpio.has_key(var):
-          self.proc_gpio[var] = 0
-        if val:
-          self.proc_gpio[var] |= 1 << idx
+        self.proc_gpio[var] |= 1 << idx
         return res
     
       res = lines[idx]
@@ -398,7 +446,9 @@ class HDACodecProc(HDACodec, HDABaseProc):
     idx, self.proc_codec_id = lookfor(idx, 'Codec: ')
     idx, tmp = lookforint(idx, 'Address: ')
     self.device = tmp # really?
-    idx, self.proc_function_id = lookforint(idx, 'Function Id: ')
+    self.proc_function_id = None
+    if lines[idx].startswith('Function Id: '):
+      idx, self.proc_function_id = lookforint(idx, 'Function Id: ')
     idx, self.proc_vendor_id = lookforint(idx, 'Vendor Id: ')
     idx, self.proc_subsystem_id = lookforint(idx, 'Subsystem Id: ')
     idx, self.proc_revision_id = lookforint(idx, 'Revision Id:' )
@@ -408,9 +458,13 @@ class HDACodecProc(HDACodec, HDABaseProc):
     if nomfg:
       idx += 1
     else:
+      if self.proc_function_id is None:
+        self.proc_function_id = 2
       idx, self.proc_modem_grp = lookforint(idx, 'Modem Function Group: ')
       self.proc_afd = -1
       return
+    if self.proc_function_id is None:
+      self.proc_function_id = 1
     if not lines[idx].startswith('Default PCM:'):
       self.wrongfile('default pcm expected')
     idx, tmp1 = decodeint(idx+1, '    rates [')
@@ -419,10 +473,22 @@ class HDACodecProc(HDACodec, HDABaseProc):
     idx, self.proc_pcm_stream = decodeint(idx, '    formats [')
     idx, self.proc_amp_caps_in = decodeampcap(idx, 'Default Amp-In caps: ')
     idx, self.proc_amp_caps_out = decodeampcap(idx, 'Default Amp-Out caps: ')
-    idx, self.proc_gpio_cap = decodegpiocap(idx, 'GPIO: ')
-    self.proc_gpio = {}
-    while lines[idx].startswith('  IO['):
-      idx = decodegpio(idx, '  IO[')
+    self.proc_gpio = {
+      'enable': 0,
+      'dir': 0,
+      'wake': 0,
+      'sticky': 0,
+      'data': 0,
+      'unsol': 0
+    }
+    self.proc_gpio_cap = 0
+    if lines[idx].startswith('GPIO: '):
+      idx, self.proc_gpio_cap = decodegpiocap(idx, 'GPIO: ')
+      while lines[idx].startswith('  IO['):
+        idx = decodegpio(idx, '  IO[')
+    if lines[idx].strip() == 'Invalid AFG subtree':
+      print "Invalid AFG subtree for codec %s?" % self.proc_codec_id
+      return
     node = None
     while idx < len(lines):
       line = lines[idx]
@@ -481,6 +547,12 @@ class HDACodecProc(HDACodec, HDABaseProc):
           pass
         elif line.startswith('  Pin-ctls: '):
           node.add_pinctls(line[12:])
+        elif line.startswith('  EAPD '):
+          node.add_eapd(line[7:])
+        elif line.startswith('  Power states: '):
+          node.add_powerstates(line[16:])
+        elif line.startswith('  Power: '):
+          node.add_power(line[9:])
         else:
           self.wrongfile(line)
         idx += 1
@@ -519,7 +591,9 @@ class HDACodecProc(HDACodec, HDABaseProc):
     if nid == AC_NODE_ROOT:
       return self.proc_afd, 1
     elif nid == self.proc_afd:
-      return len(self.proc_nids), self.proc_nids.keys()[0]
+      if self.proc_nids:
+        return len(self.proc_nids), self.proc_nids.keys()[0]
+      return 0, 0
     raise ValueError, "unimplemented get_sub_nodes(0x%x)" % nid
 
   def get_wcap(self, nid):

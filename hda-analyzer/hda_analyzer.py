@@ -32,7 +32,7 @@ DIFF_FILE = "/tmp/hda-analyze.diff"
 from hda_codec import HDACodec, HDA_card_list, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS
-from hda_proc import HDACodecProc
+from hda_proc import DecodeProcFile, HDACodecProc
 
 CODEC_TREE = {}
 DIFF_TREE = {}
@@ -52,8 +52,8 @@ def read_nodes2(card, codec):
   if not card in CODEC_TREE:
     CODEC_TREE[card] = {}
     DIFF_TREE[card] = {}
-  CODEC_TREE[card][codec] = c
-  DIFF_TREE[card][codec] = c.dump()
+  CODEC_TREE[card][c.device] = c
+  DIFF_TREE[card][c.device] = c.dump()
 
 def read_nodes3(card, codec, proc_file):
   c = HDACodecProc(card, codec, proc_file)
@@ -61,8 +61,8 @@ def read_nodes3(card, codec, proc_file):
   if not card in CODEC_TREE:
     CODEC_TREE[card] = {}
     DIFF_TREE[card] = {}
-  CODEC_TREE[card][codec] = c
-  DIFF_TREE[card][codec] = c.dump()
+  CODEC_TREE[card][c.device] = c
+  DIFF_TREE[card][c.device] = c.dump()
 
 def read_nodes(proc_files):
   l = HDA_card_list()
@@ -73,9 +73,33 @@ def read_nodes(proc_files):
   for f in proc_files:
     a = f.split('+')
     idx = 0
+    if len(a) == 1:
+      proc_file = DecodeProcFile(a[0])
+      if proc_file.find("ALSA Information Script") > 0:
+        a = []
+        pos = proc_file.find('HDA-Intel Codec information')
+        if pos >= 0:
+          proc_file = proc_file[pos:]
+          pos = proc_file.find('--startcollapse--')
+          proc_file = proc_file[pos+18:]
+          pos = proc_file.find('--endcollapse--')
+          proc_file = proc_file[:pos]
+          while 1:
+            pos = proc_file.find('\nCodec: ')
+            if pos < 0:
+              break
+            proc_file = proc_file[pos:]
+            pos = proc_file[1:].find('\nCodec: ')
+            if pos < 0:
+              pos = len(proc_file)-2
+            read_nodes3(card, idx, proc_file[:pos+2])
+            proc_file = proc_file[pos:]
+            card += 1
     for i in a:
-      read_nodes3(card, idx, i)
+      proc_file = DecodeProcFile(i)
+      read_nodes3(card, idx, proc_file)
       idx += 1
+    card += 1
   cnt = 0
   for c in CODEC_TREE:
     if len(CODEC_TREE[c]) > 0:
