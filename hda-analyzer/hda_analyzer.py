@@ -151,6 +151,9 @@ def do_diff():
     ITALIC_COLUMN
 ) = range(5)
 
+def get_fixed_font():
+  return pango.FontDescription("Misc Fixed,Courier Bold 9")
+
 class HDAAnalyzer(gtk.Window):
   info_buffer = None
   node_window = None
@@ -278,6 +281,8 @@ mailing list, too.
                         (gtk.STOCK_OK, gtk.RESPONSE_OK))
     text_view = gtk.TextView()
     text_view.set_border_width(4)
+    fontName = get_fixed_font()
+    text_view.modify_font(fontName)
     str = do_diff1(self.codec, DIFF_TREE[self.card][self.codec.device])
     if str == '':
       str = 'No changes'
@@ -422,7 +427,7 @@ mailing list, too.
     scrolled_window.set_shadow_type(gtk.SHADOW_IN)
     
     text_view = gtk.TextView()
-    fontName = pango.FontDescription("Misc Fixed,Courier Bold 9")
+    fontName = get_fixed_font()
     text_view.modify_font(fontName)
     scrolled_window.add(text_view)
     
@@ -445,7 +450,7 @@ mailing list, too.
   def __new_text_view(self):
     text_view = gtk.TextView()
     text_view.set_border_width(4)
-    fontName = pango.FontDescription("Misc Fixed,Courier Bold 9")
+    fontName = get_fixed_font()
     text_view.modify_font(fontName)
     return text_view
 
