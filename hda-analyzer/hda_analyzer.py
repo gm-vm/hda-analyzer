@@ -965,7 +965,7 @@ mailing list, too.
     w.add_with_viewport(mframe)
 
 def main():
-  if sys.argv[1] in ('-h', '-help', '--help'):
+  if len(sys.argv) > 1 and sys.argv[1] in ('-h', '-help', '--help'):
     print __doc__ % globals()
     sys.exit(0)
   if read_nodes(sys.argv[1:]) == 0:
