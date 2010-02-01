@@ -1002,6 +1002,7 @@ def monitor():
     sleep(1)
 
 def main(argv):
+  cmd = None
   if len(argv) > 1 and argv[1] in ('-h', '-help', '--help'):
     print __doc__ % globals()
     return 0
