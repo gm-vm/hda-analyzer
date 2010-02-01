@@ -16,12 +16,15 @@
 hda_analyzer - a tool to analyze HDA codecs widgets and connections
 
 Usage: hda_analyzer [[codec_proc] ...]
+   or: hda_analyzer --monitor
 
     codec_proc might specify multiple codec files per card:
         codec_proc_file1+codec_proc_file2
     or codec_proc might be a dump from alsa-info.sh
     or codec_proc might be a hash for codec database at www.alsa-project.org
     or codec_proc might be a URL for codec dump or alsa-info.sh dump
+
+    Monitor mode: check for codec changes in realtime and dump diffs.
 """
 
 import os
@@ -969,10 +972,42 @@ mailing list, too.
     mframe.add(vbox)
     w.add_with_viewport(mframe)
 
-def main():
-  if len(sys.argv) > 1 and sys.argv[1] in ('-h', '-help', '--help'):
+def monitor():
+  from time import sleep
+  print "Watching %s cards" % len(CODEC_TREE)
+  dumps = {}
+  while 1:
+    ok = False
+    for card in CODEC_TREE:
+      if not card in dumps:
+        dumps[card] = {}
+      for codec in CODEC_TREE[card]:
+        if not codec in dumps[card]:
+          dumps[card][codec] = ''
+        c = CODEC_TREE[card][codec]
+        if c.hwaccess:
+          ok = True
+        c.reread()
+        diff = ''
+        dump1 = c.dump()
+        if dumps[card][codec]:
+          diff = do_diff1(c, dumps[card][codec])
+        dumps[card][codec] = dump1
+        if diff:
+          print "======================================"
+          print diff
+    if not ok:
+      print "Nothing to monitor (no hwdep access)"
+      break
+    sleep(1)
+
+def main(argv):
+  if len(argv) > 1 and argv[1] in ('-h', '-help', '--help'):
     print __doc__ % globals()
-    sys.exit(0)
+    return 0
+  if len(argv) > 1 and argv[1] in ('-m', '-monitor', '--monitor'):
+    cmd = 'monitor'
+    del argv[1]
   if read_nodes(sys.argv[1:]) == 0:
     print "No HDA codecs were found or insufficient priviledges for "
     print "/dev/snd/controlC* and /dev/snd/hwdepC*D* device files."
@@ -981,9 +1016,14 @@ def main():
     print "interface as well or close all application using HWDEP."
     print
     print "Try run this program as root user."
+    return 0
   else:
+    if cmd == 'monitor':
+      monitor()
+      return 1
     HDAAnalyzer()
     gtk.main()
+  return 1
 
 if __name__ == '__main__':
-  main()
+  sys.exit(main(sys.argv))

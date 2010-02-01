@@ -716,7 +716,8 @@ class HDACodec:
   subsystem_id = None
   revision_id = None
 
-  def __init__(self, card=0, device=0):
+  def __init__(self, card=0, device=0, clonefd=None):
+    self.fd = None
     self.hwaccess = True
     if type(1) == type(card):
       self.device = device
@@ -726,7 +727,10 @@ class HDACodec:
       self.device = device
       self.mcard = card
       self.card = card.card
-    self.fd = os.open("/dev/snd/hwC%sD%s" % (card, device), os.O_RDWR)
+    if not clonefd:
+      self.fd = os.open("/dev/snd/hwC%sD%s" % (card, device), os.O_RDWR)
+    else:
+      self.fd = os.dup(clonefd)
     info = struct.pack('Ii64s80si64s', 0, 0, '', '', 0, '')
     res = ioctl(self.fd, IOCTL_INFO, info)
     name = struct.unpack('Ii64s80si64s', res)[3]
@@ -736,6 +740,10 @@ class HDACodec:
     self.version = struct.unpack('I', res)
     if self.version < 0x00010000:	# 1.0.0
       raise IOError, "unknown HDA hwdep version"
+
+  def __del__(self):
+    if not self.fd is None:
+      os.close(self.fd)
 
   def rw(self, nid, verb, param):
     """do elementary read/write operation"""
@@ -856,6 +864,11 @@ class HDACodec:
     for i in range(nodes_count):
       self.nodes[nid] = HDANode(self, nid)
       nid += 1
+
+  def reread(self):
+    self.gpio.reread()
+    for node in self.nodes:
+      self.nodes[node].reread()
 
   def analyze_pcm_rates(self, pcm):
     rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200,
@@ -1156,7 +1169,7 @@ class HDACodec:
       str += print_realtek_coef(node)
     return str
 
-  def dump_node_extra(node):
+  def dump_node_extra(self, node):
     return ''
 
 def HDA_card_list():
