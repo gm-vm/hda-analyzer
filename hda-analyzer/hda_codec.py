@@ -827,8 +827,10 @@ class HDACodec:
     for i in range(total):
       self.function_id = func = self.param_read(nid, PARAMS['FUNCTION_TYPE'])
       if (func & 0xff) == 0x01:		# audio group
+        self.afg_unsol = (func & 0x100) and True or False
         self.afg = nid
       elif (func & 0xff) == 0x02:	# modem group
+        self.mfg_unsol = (func & 0x100) and True or False
         self.mfg = nid
       else:
         break
@@ -837,6 +839,10 @@ class HDACodec:
     if self.subsystem_id == 0:
       self.subsystem_id = self.rw(self.afg and self.afg or self.mfg,
                                   VERBS['GET_SUBSYSTEM_ID'], 0)
+
+    # parse only audio function group
+    if self.afg == None:
+      return
 
     pcm = self.param_read(self.afg, PARAMS['PCM'])
     self.pcm_rate = pcm & 0xffff
@@ -953,7 +959,7 @@ class HDACodec:
       str += 'Modem Function Group: 0x%x\n' % self.mfg
     else:
       str += 'No Modem Function Group found\n'
-    if not self.afg: return str
+    if self.afg is None: return str
     str += 'Default PCM:\n'
     str += print_pcm_caps(self)
     str += 'Default Amp-In caps: '
