@@ -255,6 +255,9 @@ class ProcNode(HDABaseProc):
       self.wrongfile('more than one PCM device?')
     self.device = HDApcmDevice(name, type, device)
 
+  def get_device(self):
+    return self.device
+
   def add_converter(self, line):
     line, stream = self.decodeintw(line, 'stream=')
     line, channel = self.decodeintw(line, 'channel=')
@@ -312,6 +315,9 @@ class ProcNode(HDABaseProc):
     line, ctl.amp_idx = self.decodeintw(line, 'idx=')
     line, ctl.amp_ofs = self.decodeintw(line, 'ofs=')
     ctl.amp_dir = ctl.amp_dir == 'In' and HDA_INPUT or HDA_OUTPUT
+
+  def get_controls(self):
+    return self.controls
 
   def add_ampcaps(self, line, dir):
     line = line.strip()
@@ -449,6 +455,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
 
   def __init__(self, card, device, proc_file):
     self.hwaccess = False
+    self.proc_codec = None
     self.card = card
     self.device = device
     self.mcard = HDACardProc(card)
@@ -749,6 +756,14 @@ class HDACodecProc(HDACodec, HDABaseProc):
   def dump_node_extra(self, node):
     node = self.proc_nids[node.nid]
     return node.dump_extra()
+
+  def get_device(self, nid):
+    node = self.proc_nids[nid]
+    return node.get_device()
+
+  def get_controls(self, nid):
+    node = self.proc_nids[nid]
+    return node.get_controls()
 
 #
 # test section

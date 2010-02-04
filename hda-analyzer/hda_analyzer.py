@@ -771,8 +771,8 @@ mailing list, too.
     frame.add(text_view)
     vbox.pack_start(frame)
 
-    hbox1 = gtk.HBox(False, 0)
-    if node.sdi_select != None:
+    if not node.sdi_select is None:
+      hbox1 = gtk.HBox(False, 0)
       frame = gtk.Frame('SDI Select')
       adj = gtk.Adjustment(node.sdi_select, 0.0, 16.0, 1.0, 1.0, 1.0)
       scale = gtk.HScale(adj)
@@ -806,6 +806,42 @@ mailing list, too.
 
     return vbox
 
+  def __build_device(self, device):
+    vbox = gtk.VBox(False, 0)
+    frame = gtk.Frame('Device')
+    frame.set_border_width(4)
+    hbox = gtk.HBox(False, 0)
+    s = 'name=' + str(device.name) + ', type=' + \
+        str(device.type) + ', device=' + str(device.device)
+    label = gtk.Label(s)
+    hbox.pack_start(label, False, False)
+    frame.add(hbox)
+    vbox.pack_start(frame)
+    return vbox
+
+  def __build_controls(self, ctrls):
+    vbox = gtk.VBox(False, 0)
+    frame = gtk.Frame('Controls')
+    frame.set_border_width(4)
+    vbox1 = gtk.VBox(False, 0)
+    for ctrl in ctrls:
+      hbox1 = gtk.HBox(False, 0)
+      vbox1.pack_start(hbox1, False, False)
+      s = 'name=' + str(ctrl.name) + ', index=' + str(ctrl.index) + \
+          ', device=' + str(ctrl.device)
+      label = gtk.Label(s)
+      hbox1.pack_start(label, False, False)
+      if ctrl.amp_chs:
+        hbox1 = gtk.HBox(False, 0)
+        vbox1.pack_start(hbox1, False, False)
+        s = '  chs=' + str(ctrl.amp_chs) + ', dir=' + str(ctrl.amp_dir) + \
+            ', idx=' + str(ctrl.amp_idx) + ', ofs=' + str(ctrl.amp_ofs)
+        label = gtk.Label(s)
+        hbox1.pack_start(label, False, False)
+    frame.add(vbox1)
+    vbox.pack_start(frame)
+    return vbox
+
   def __build_node(self, node):
     w = self.node_window
 
@@ -813,6 +849,12 @@ mailing list, too.
     mframe.set_border_width(4)
 
     vbox = gtk.VBox(False, 0)
+    dev = node.get_device()
+    if not dev is None:
+      vbox.pack_start(self.__build_device(dev), False, False)
+    ctrls = node.get_controls()
+    if ctrls:
+      vbox.pack_start(self.__build_controls(ctrls), False, False)
     hbox = gtk.HBox(False, 0)
     hbox.pack_start(self.__build_node_caps(node))
     hbox.pack_start(self.__build_connection_list(node))

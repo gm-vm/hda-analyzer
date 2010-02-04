@@ -653,6 +653,12 @@ class HDANode:
       self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_2'], (self.origin_digi1 >> 8) & 0xff)
     self.reread()
 
+  def get_device(self):
+    return self.codec.get_device(self.nid)
+
+  def get_controls(self):
+    return self.codec.get_controls(self.nid)
+
 class HDAGPIO:
 
   def __init__(self, codec, nid):
@@ -740,6 +746,7 @@ class HDACodec:
     self.version = struct.unpack('I', res)
     if self.version < 0x00010000:	# 1.0.0
       raise IOError, "unknown HDA hwdep version"
+    self.parse_proc()
 
   def __del__(self):
     if not self.fd is None:
@@ -815,9 +822,20 @@ class HDACodec:
       return HDARootNode(self, "Audio Root Node")
     return self.nodes[nid]
 
+  def parse_proc(self):
+    from hda_proc import HDACodecProc, DecodeProcFile
+    file = "/proc/asound/card%i/codec#%i" % (self.card, self.device)
+    if os.path.exists(file):
+      file = DecodeProcFile(file)
+      self.proc_codec = HDACodecProc(self.card, self.device, file)
+    else:
+      self.proc_codec = None
+      print "Unable to find proc file '%s'" % file
+
   def analyze(self):
     self.afg = None
     self.mfg = None
+    self.nodes = {}
     self.vendor_id = self.param_read(AC_NODE_ROOT, PARAMS['VENDOR_ID'])
     self.subsystem_id = self.param_read(AC_NODE_ROOT, PARAMS['SUBSYSTEM_ID'])
     self.revision_id = self.param_read(AC_NODE_ROOT, PARAMS['REV_ID'])
@@ -866,7 +884,6 @@ class HDACodec:
 
     nodes_count, nid = self.get_sub_nodes(self.afg)
     self.base_nid = nid
-    self.nodes = {}
     for i in range(nodes_count):
       self.nodes[nid] = HDANode(self, nid)
       nid += 1
@@ -1177,6 +1194,16 @@ class HDACodec:
 
   def dump_node_extra(self, node):
     return ''
+
+  def get_device(self, nid):
+    if self.proc_codec:
+      return self.proc_codec.get_device(nid)
+    return None
+
+  def get_controls(self, nid):
+    if self.proc_codec:
+      return self.proc_codec.get_controls(nid)
+    return None
 
 def HDA_card_list():
   from dircache import listdir
