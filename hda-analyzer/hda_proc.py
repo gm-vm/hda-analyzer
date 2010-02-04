@@ -509,7 +509,10 @@ class HDACodecProc(HDACodec, HDABaseProc):
     
       def writeval(str, idx, var):
         res, val = self.decodeintw(str, var + '=')
-        self.proc_gpio[var] |= 1 << idx
+        if val:
+          self.proc_gpio[var] |= 1 << idx
+        else:
+          self.proc_gpio[var] &= ~(1 << idx)
         return res
     
       res = lines[idx]
