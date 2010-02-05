@@ -813,7 +813,8 @@ class HDACodec:
     return res
 
   def revert(self):
-    self.gpio.revert()
+    if not self.gpio is None:
+      self.gpio.revert()
     for nid in self.nodes:
       self.nodes[nid].revert()
 
@@ -890,7 +891,7 @@ class HDACodec:
       nid += 1
 
   def reread(self):
-    if self.gpio:
+    if not self.gpio is None:
       self.gpio.reread()
     for node in self.nodes:
       self.nodes[node].reread()
