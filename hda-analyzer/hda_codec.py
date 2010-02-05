@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2008 by Jaroslav Kysela <perex@perex.cz>
+# Copyright (c) 2008-2010 by Jaroslav Kysela <perex@perex.cz>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -836,6 +836,7 @@ class HDACodec:
     self.afg = None
     self.mfg = None
     self.nodes = {}
+    self.gpio = None
     self.vendor_id = self.param_read(AC_NODE_ROOT, PARAMS['VENDOR_ID'])
     self.subsystem_id = self.param_read(AC_NODE_ROOT, PARAMS['SUBSYSTEM_ID'])
     self.revision_id = self.param_read(AC_NODE_ROOT, PARAMS['REV_ID'])
@@ -889,7 +890,8 @@ class HDACodec:
       nid += 1
 
   def reread(self):
-    self.gpio.reread()
+    if self.gpio:
+      self.gpio.reread()
     for node in self.nodes:
       self.nodes[node].reread()
 

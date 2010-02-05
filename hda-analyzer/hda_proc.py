@@ -455,6 +455,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
 
   def __init__(self, card, device, proc_file):
     self.hwaccess = False
+    self.fd = None
     self.proc_codec = None
     self.card = card
     self.device = device
