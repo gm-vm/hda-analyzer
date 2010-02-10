@@ -838,10 +838,21 @@ class HDACodec:
     self.mfg = None
     self.nodes = {}
     self.gpio = None
+    self.function_id = 0			# invalid
     self.vendor_id = self.param_read(AC_NODE_ROOT, PARAMS['VENDOR_ID'])
     self.subsystem_id = self.param_read(AC_NODE_ROOT, PARAMS['SUBSYSTEM_ID'])
     self.revision_id = self.param_read(AC_NODE_ROOT, PARAMS['REV_ID'])
     self.name = "0x%08x" % self.vendor_id	# FIXME
+    self.pcm_rates = []
+    self.pcm_bits = []
+    self.pcm_streams = []
+    self.amp_caps_in = None
+    self.amp_caps_out = None
+    self.gpio_max = 0
+    self.gpio_o = 0
+    self.gpio_i = 0
+    self.gpio_unsol = 0
+    self.gpio_wake = 0
 
     total, nid = self.get_sub_nodes(AC_NODE_ROOT)
     for i in range(total):
