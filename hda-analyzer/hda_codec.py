@@ -494,7 +494,7 @@ class HDANode:
         self.pcm_bits = self.codec.analyze_pcm_bits(self.pcm_bit)
         self.pcm_stream = stream
         self.pcm_streams = self.codec.analyze_pcm_streams(self.pcm_stream)
-    elif self.wtype_id in ['PROC_WID']:
+    if self.proc_wid:
       proc_caps = self.codec.param_read(self.nid, PARAMS['PROC_CAP'])
       self.proc_benign = proc_caps & 1 and True or False
       self.proc_numcoef = (proc_caps >> 8) & 0xff
@@ -1151,7 +1151,7 @@ class HDACodec:
       return str
 
     def print_proc_caps(node):
-      return "  Processing caps: benign=%d, ncoeff=%d\n" % (node.proc_benign, node.proc_nuncoef)
+      return "  Processing caps: benign=%d, ncoeff=%d\n" % (node.proc_benign, node.proc_numcoef)
 
     def print_realtek_coef(node):
       str = "  Processing Coefficient: 0x%02x\n" % node.realtek_coeff_proc
@@ -1200,7 +1200,7 @@ class HDACodec:
       str += "  Delay: %d samples\n" % node.wdelay
     if node.conn_list:
       str += print_conn_list(node)
-    if node.wtype_id == 'PROC_WID':
+    if node.proc_wid:
       str += print_proc_caps(node)
     if hasattr(node, 'realtek_coeff_proc'):
       str += print_realtek_coef(node)

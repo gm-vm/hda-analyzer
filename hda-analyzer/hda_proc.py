@@ -181,6 +181,8 @@ class ProcNode(HDABaseProc):
     self.params = {}
     self.verbs = {}
     self.controls = []
+    if wcaps & (1 << 6):
+      self.add_param(PARAMS['PROC_CAP'], 0)
     if wcaps & (1 << 7):
       self.add_verb(VERBS['GET_UNSOLICITED_RESPONSE'], 0)
     if wcaps & (1 << 9):
@@ -652,8 +654,6 @@ class HDACodecProc(HDACodec, HDABaseProc):
         elif line == '  PCM:':
           node.add_pcm(lines[idx+1], lines[idx+2], lines[idx+3])
           idx += 3
-        elif line.startswith('  Processing caps: '):
-          pass
         elif line.startswith('  Pincap '):
           node.add_pincap(line[9:])
         elif line.startswith('    Vref caps: '):

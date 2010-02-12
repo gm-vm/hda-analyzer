@@ -450,11 +450,20 @@ mailing list, too.
     scrolled_window.set_shadow_type(gtk.SHADOW_IN)    
     return scrolled_window
 
-  def __new_text_view(self):
+  def __new_text_view(self, text=None):
     text_view = gtk.TextView()
     text_view.set_border_width(4)
     fontName = get_fixed_font()
     text_view.modify_font(fontName)
+    if not text is None:
+      buffer = gtk.TextBuffer(None)
+      iter = buffer.get_iter_at_offset(0)
+      if text[-1] == '\n':
+        text = text[:-1]
+      buffer.insert(iter, text)
+      text_view.set_buffer(buffer)
+      text_view.set_editable(False)
+      text_view.set_cursor_visible(False)
     return text_view
 
   def __build_node_caps(self, node):
@@ -462,17 +471,10 @@ mailing list, too.
     frame.set_border_width(4)
     if len(node.wcaps_list) == 0:
       return frame
-    text_view = self.__new_text_view()
     str = ''
     for i in node.wcaps_list:
       str += node.wcap_name(i) + '\n'
-    buffer = gtk.TextBuffer(None)
-    iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str[:-1])
-    text_view.set_buffer(buffer)
-    text_view.set_editable(False)
-    text_view.set_cursor_visible(False)
-    frame.add(text_view)
+    frame.add(self.__new_text_view(text=str))
     return frame
 
   def __node_connection_toggled(self, widget, row, data):
@@ -544,18 +546,11 @@ mailing list, too.
       frame.set_border_width(4)
       vbox = gtk.VBox(False, 0)
       if caps:
-        text_view = self.__new_text_view()
         str =  'Offset:          %d\n' % caps.ofs
         str += 'Number of steps: %d\n' % caps.nsteps
         str += 'Step size:       %d\n' % caps.stepsize
         str += 'Mute:            %s\n' % (caps.mute and "True" or "False")
-        buffer = gtk.TextBuffer(None)
-        iter = buffer.get_iter_at_offset(0)
-        buffer.insert(iter, str[:-1])
-        text_view.set_buffer(buffer)
-        text_view.set_editable(False)
-        text_view.set_cursor_visible(False)
-        vbox.pack_start(text_view, True, True, 0)
+        vbox.pack_start(self.__new_text_view(text=str), True, True, 0)
         idx = 0
         frame1 = None
         vbox1 = None
@@ -635,19 +630,12 @@ mailing list, too.
       if node.pincap or node.pincap_vref:
         frame = gtk.Frame('PIN Caps')
         frame.set_border_width(4)
-        text_view = self.__new_text_view()
         str = ''
         for i in node.pincap:
           str += node.pincap_name(i) + '\n'
         for i in node.pincap_vref:
           str += 'VREF_%s\n' % i
-        buffer = gtk.TextBuffer(None)
-        iter = buffer.get_iter_at_offset(0)
-        buffer.insert(iter, str[:-1])
-        text_view.set_buffer(buffer)
-        text_view.set_editable(False)
-        text_view.set_cursor_visible(False)
-        frame.add(text_view)
+        frame.add(self.__new_text_view(text=str))
         vbox.pack_start(frame)
       if 'EAPD' in node.pincap:
         frame = gtk.Frame('EAPD')
@@ -666,7 +654,6 @@ mailing list, too.
 
     frame = gtk.Frame('Config Default')
     frame.set_border_width(4)
-    text_view = self.__new_text_view()
     str =  'Jack connection: %s\n' % node.jack_conn_name
     str += 'Jack type:       %s\n' % node.jack_type_name
     str += 'Jack location:   %s\n' % node.jack_location_name
@@ -675,13 +662,7 @@ mailing list, too.
     str += 'Jack color:      %s\n' % node.jack_color_name
     if 'NO_PRESENCE' in node.defcfg_misc:
       str += 'No presence\n'
-    buffer = gtk.TextBuffer(None)
-    iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str[:-1])
-    text_view.set_buffer(buffer)
-    text_view.set_editable(False)
-    text_view.set_cursor_visible(False)
-    frame.add(text_view)
+    frame.add(self.__new_text_view(text=str))
     vbox.pack_start(frame)
     
     frame = gtk.Frame('Widget Control')
@@ -747,7 +728,6 @@ mailing list, too.
 
     frame = gtk.Frame('Converter')
     frame.set_border_width(4)
-    text_view = self.__new_text_view()
     str = 'Audio Stream:\t%s\n' % node.aud_stream
     str += 'Audio Channel:\t%s\n' % node.aud_channel
     if node.format_ovrd:
@@ -762,13 +742,7 @@ mailing list, too.
         str += '\t\t%s\n' % node.codec.pcm_rates[6:]
       str += 'Global Bits:\t%s\n' % node.codec.pcm_bits
       str += 'Global Streams:\t%s\n' % node.codec.pcm_streams
-    buffer = gtk.TextBuffer(None)
-    iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str[:-1])
-    text_view.set_buffer(buffer)
-    text_view.set_editable(False)
-    text_view.set_cursor_visible(False)
-    frame.add(text_view)
+    frame.add(self.__new_text_view(text=str))
     vbox.pack_start(frame)
 
     if not node.sdi_select is None:
@@ -842,6 +816,13 @@ mailing list, too.
     vbox.pack_start(frame)
     return vbox
 
+  def __build_proc(self, node):
+    frame = gtk.Frame('Processing Caps')
+    frame.set_border_width(4)
+    str = 'benign=%i\nnumcoef=%i\n' % (node.proc_benign, node.proc_numcoef)
+    frame.add(self.__new_text_view(text=str))
+    return frame
+
   def __build_node(self, node):
     w = self.node_window
 
@@ -868,6 +849,8 @@ mailing list, too.
     else:
       if not node.wtype_id in ['AUD_MIX', 'BEEP', 'AUD_SEL']:
         print 'Node type %s has no GUI support' % node.wtype_id
+    if node.proc_wid:
+      vbox.pack_start(self.__build_proc(node), False, False)
 
     mframe.add(vbox)
     w.add_with_viewport(mframe)
@@ -877,36 +860,22 @@ mailing list, too.
 
     frame = gtk.Frame('Codec Identification')
     frame.set_border_width(4)
-    text_view = self.__new_text_view()
     str = 'Audio Fcn Group: %s\n' % (codec.afg and "0x%02x" % codec.afg or "N/A")
     str += 'Modem Fcn Group: %s\n' % (codec.mfg and "0x%02x" % codec.mfg or "N/A")
     str += 'Vendor ID:\t 0x%08x\n' % codec.vendor_id
     str += 'Subsystem ID:\t 0x%08x\n' % codec.subsystem_id
     str += 'Revision ID:\t 0x%08x\n' % codec.revision_id
-    buffer = gtk.TextBuffer(None)
-    iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str[:-1])
-    text_view.set_buffer(buffer)
-    text_view.set_editable(False)
-    text_view.set_cursor_visible(False)
-    frame.add(text_view)
+    frame.add(self.__new_text_view(text=str))
     vbox.pack_start(frame, False, False)
 
     frame = gtk.Frame('PCM Global Capabilities')
     frame.set_border_width(4)
-    text_view = self.__new_text_view()
     str = 'Rates:\t\t %s\n' % codec.pcm_rates[:6]
     if len(codec.pcm_rates) > 6:
       str += '\t\t %s\n' % codec.pcm_rates[6:]
     str += 'Bits:\t\t %s\n' % codec.pcm_bits
     str += 'Streams:\t %s\n' % codec.pcm_streams
-    buffer = gtk.TextBuffer(None)
-    iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str[:-1])
-    text_view.set_buffer(buffer)
-    text_view.set_editable(False)
-    text_view.set_cursor_visible(False)
-    frame.add(text_view)
+    frame.add(self.__new_text_view(text=str))
     vbox.pack_start(frame, False, False)
 
     return vbox
@@ -917,18 +886,11 @@ mailing list, too.
       frame = gtk.Frame(title)
       frame.set_border_width(4)
       if caps and caps.ofs != None:
-        text_view = self.__new_text_view()
         str = 'Offset:\t\t %d\n' % caps.ofs
         str += 'Number of steps: %d\n' % caps.nsteps
         str += 'Step size:\t %d\n' % caps.stepsize
         str += 'Mute:\t\t %s\n' % (caps.mute and "True" or "False")
-        buffer = gtk.TextBuffer(None)
-        iter = buffer.get_iter_at_offset(0)
-        buffer.insert(iter, str[:-1])
-        text_view.set_buffer(buffer)
-        text_view.set_editable(False)
-        text_view.set_cursor_visible(False)
-        frame.add(text_view)
+        frame.add(self.__new_text_view(text=str))
       return frame
 
     hbox = gtk.HBox(False, 0)
@@ -947,19 +909,12 @@ mailing list, too.
     frame = gtk.Frame('GPIO')
     frame.set_border_width(4)
     hbox = gtk.HBox(False, 0)
-    text_view = self.__new_text_view()
     str =  'IO Count:    %d\n' % codec.gpio_max
     str += 'O Count:     %d\n' % codec.gpio_o
     str += 'I Count:     %d\n' % codec.gpio_i
     str += 'Unsolicited: %s\n' % (codec.gpio_unsol and "True" or "False")
     str += 'Wake:        %s\n' % (codec.gpio_wake and "True" or "False")
-    buffer = gtk.TextBuffer(None)
-    iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str[:-1])
-    text_view.set_buffer(buffer)
-    text_view.set_editable(False)
-    text_view.set_cursor_visible(False)
-    hbox.pack_start(text_view, False, False)
+    hbox.pack_start(self.__new_text_view(text=str), False, False)
     frame.add(hbox)
     for id in GPIO_IDS:
       id1 = id == 'direction' and 'out-dir' or id
@@ -989,19 +944,12 @@ mailing list, too.
     w.add_with_viewport(mframe)
 
   def __build_card_info(self, card):
-    text_view = self.__new_text_view()
     str =  'Card:       %s\n' % card.card
     str += 'Id:         %s\n' % card.id
     str += 'Driver:     %s\n' % card.driver
     str += 'Name:       %s\n' % card.name
     str += 'LongName:   %s\n' % card.longname
-    buffer = gtk.TextBuffer(None)
-    iter = buffer.get_iter_at_offset(0)
-    buffer.insert(iter, str[:-1])
-    text_view.set_buffer(buffer)
-    text_view.set_editable(False)
-    text_view.set_cursor_visible(False)
-    return text_view
+    return self.__new_text_view(text=str)
 
   def __build_card(self, card):
     w = self.node_window
