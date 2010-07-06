@@ -1233,7 +1233,7 @@ class HDACodec:
         res += 1
     return res
 
-  def graph(self, dump=False):
+  def graph(self, dump=False, prefer_x=None, prefer_y=None):
   
     def mfind(nid):
       for y in range(len(res)):
@@ -1252,7 +1252,7 @@ class HDACodec:
             x = 1
             y += 1
           if y >= len(res) - 1:
-            raise ValueError, "cannot place nid to graph matrix"
+            return False
           if res[y][x+1] is None and \
              res[y][x-1] is None and \
              res[y+1][x] is None and \
@@ -1297,15 +1297,19 @@ class HDACodec:
           return doplace(nid, y+1, 1)
         if x+1 < len(res[0]):
           return doplace(nid, 1, x+1)
-        raise ValueError, "cannot place nid to graph matrix"
-      return False
+        return False
+      return None
   
+    error = 0
     res = []
     unplaced = []
     # determine all termination widgets
     terms = {'AUD_IN':[], 'AUD_OUT':[], 'PIN_IN':[], 'PIN_OUT':[]}
+    mixes = 0
     for nid in self.nodes:
       node = self.nodes[nid]
+      if node.wtype_id == 'AUD_MIX':
+        mixes += 1
       if node.wtype_id in ['AUD_IN', 'AUD_OUT', 'PIN']:
         id = node.wtype_id
         if id == 'PIN':
@@ -1316,10 +1320,21 @@ class HDACodec:
     for id in terms:
       terms[id].sort()
     # build the matrix
-    x = max(len(terms['AUD_IN']), len(terms['AUD_OUT'])) + 2
-    y = max(len(terms['PIN_IN']), len(terms['PIN_OUT'])) + 2
-    if x == 2 and y == 2:
+    if prefer_x:
+      x = prefer_x
+    else:
+      x = max(len(terms['AUD_IN']), len(terms['AUD_OUT'])) + 2
+    if prefer_y:
+      y = prefer_y
+    else:
+      y = max(len(terms['PIN_IN']), len(terms['PIN_OUT'])) + 2
+    if x <= 2 and y <= 2:
       return None
+    while (x - 2) * (y - 2) < mixes * 9:
+      if x <= y:
+        x += 1
+      else:
+        y += 1
     for a in range(y):
       res.append([None]*x)
     if 'PIN_IN' in terms:
@@ -1343,7 +1358,7 @@ class HDACodec:
       res.insert(-2, [None]*x)
     # assign unplaced nids - check connections
     unplaced.sort()
-    while unplaced:
+    while unplaced and not error:
       change = len(unplaced)
       for idx in range(len(res)):
         for idx1 in range(len(res[idx])):
@@ -1354,8 +1369,15 @@ class HDACodec:
           if not node or not node.connections:
             continue
           for conn in node.connections:
-            if conn in unplaced and doplace(conn, idx, idx1):
-              unplaced.remove(conn)
+            if conn in unplaced:
+              pl = doplace(conn, idx, idx1)
+              if pl is True:
+                unplaced.remove(conn)
+              elif pl is None:
+                error += 1
+                break
+      if error:
+        break
       for nid in unplaced:
         node = self.nodes[nid]
         if not node.connections:
@@ -1363,9 +1385,17 @@ class HDACodec:
         for conn in node.connections:
           placed = False
           y, x = mfind(nid)
-          if doplace(nid, y, x):
+          if not y or not x:
+            continue
+          pl = doplace(nid, y, x)
+          if pl is True:
             unplaced.remove(nid)
             break
+          elif pl is None:
+            error += 1
+            break
+        if error:
+          break
       if len(unplaced) == change:
         break
     y = len(res)
@@ -1378,6 +1408,8 @@ class HDACodec:
       if x >= len(res[0]):
         y += 1
         x = 0
+    if error:
+      return self.graph(dump=dump, prefer_x=x+2, prefer_y=y+2)
     # do extra check
     check = []
     for y in range(len(res)):

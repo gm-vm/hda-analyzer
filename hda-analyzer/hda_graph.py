@@ -128,6 +128,7 @@ class Route:
     self.src = src_node
     self.dst = dst_node
     self.lines = []
+    self.wronglines = []
     self.analyze_routes(routes, nodes)
     src_node.dst_routes.append(self)
     dst_node.src_routes.append(self)
@@ -166,6 +167,13 @@ class Route:
         cr.set_source_rgb(0, 0, 0)
       if len(line) > 4:
         cr.set_source_rgb(0, 1, 0)
+      cr.move_to(line[0], line[1])
+      cr.line_to(line[2], line[3])
+      cr.stroke()
+
+    for line in self.wronglines:
+      cr.set_line_width(1.5)
+      cr.set_source_rgb(1, 0, 0)
       cr.move_to(line[0], line[1])
       cr.line_to(line[2], line[3])
       cr.stroke()
@@ -278,11 +286,19 @@ class Route:
       if tryit == 2:
         r = range(-height-extra+5, -height-5, 5)
         r.reverse()
+      x1 = x + 5 + fixup
+      x2 = sel[0] - fixup
+      if x1 > x2:
+        sub = width/2
+        x1 = x + sub + fixup
+        sub -= 5
+      else:
+        sub = 0
       for i in range(tryit*extra, (tryit+1)*extra-5-1, 5):
-        possible.append([x+5+fixup, sel[1]+i, sel[0]-fixup, sel[1]+i])
+        possible.append([x1, sel[1]+i, x2, sel[1]+i])
       sel1 = self.select_line(routes, nodes, possible)
       if sel1:
-        sel1[0] -= fixup
+        sel1[0] -= fixup + sub
         sel1[2] += fixup
         possible = []
         for j in range(0, width/2-10, 5):
@@ -296,7 +312,7 @@ class Route:
           tryit = -1
           break
     if tryit >= 0:
-      self.lines.append([x+5, y, sel[0], sel[1], 1])
+      self.wronglines.append([x+5, y, sel[0], sel[1]])
       print "[1] displaced route 0x%x->0x%x %s %s" % (self.src.node.nid, self.dst.node.nid, repr(self.lines[-1]), repr(sel))
       res = False
 
@@ -309,11 +325,19 @@ class Route:
       if tryit == 2:
         r = range(-height-extra+5, -height-5, 5)
         r.reverse()
+      sub = width/2
+      x1 = x + sub + fixup
+      x2 = sel[2] - fixup
+      if x1 < x2:
+        x1 = x + 5 + fixup
+        sub = 0
+      else:
+        sub -= 5
       for i in r:
-        possible.append([x+(width/2-1)+fixup, sel[3]+i, sel[2]-fixup, sel[3]+i])
+        possible.append([x1, sel[3]+i, x2, sel[3]+i])
       sel1 = self.select_line(routes, nodes, possible)
       if sel1:
-        sel1[0] -= fixup + (width/2-1) - 5
+        sel1[0] -= fixup + sub
         sel1[2] += fixup
         possible = []
         for j in range(0, width/2-10, 5):
@@ -327,7 +351,7 @@ class Route:
           tryit = -1
           break
     if tryit >= 0:
-      self.lines.append([x+5, y, sel[2], sel[3], 1])
+      self.wronglines.append([x+5, y, sel[2], sel[3]])
       print "[2] displaced route 0x%x->0x%x %s %s" % (self.src.node.nid, self.dst.node.nid, repr(self.lines[-1]), repr(sel))
       res = False
       
@@ -455,6 +479,8 @@ class CodecGraphLayout(gtk.Layout):
       if not route.finish(self.routes, self.nodes):
         res = False
         break
+    if not res:
+      return
     # final step - optimize drawings
     while 1:
       size = self.compressx(sx)
@@ -585,20 +611,23 @@ class CodecGraphLayout(gtk.Layout):
   def mouse_move(self, widget, event):
     oldpopup = self.popup
     self.popup = None
-    for route in self.routes:
-      route.highlight = False
+    redraw = False
     found = False
+    for route in self.routes:
+      if route.highlight:
+        redraw = True
+        route.highlight = False
     for node in self.nodes:
       if node.mouse_move(event.x, event.y, self):
-        self.queue_draw()
-        found = True
+        found = redraw = True
         break
     if not found:
       for route in self.routes:
         if route.mouse_move(event.x, event.y, self):
-          self.queue_draw()
-          found = True
+          found = redraw = True
           break
+    if redraw:
+      self.queue_draw()
     if self.popup:
       if oldpopup != self.popup:
         self.show_popup(event)
