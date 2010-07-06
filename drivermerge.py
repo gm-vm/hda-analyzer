@@ -264,7 +264,8 @@ def compare_trees(driver_repo, driver_branch, kernel_repo, kernel_branch):
     rmtree("alsa-kernel-repo/Documentation/DocBook")
     mkdir("alsa-kernel-repo/Documentation/DocBook")
     system("mv alsa-kernel-repo/Documentation/alsa-driver-api.tmpl alsa-kernel-repo/Documentation/DocBook")
-    for i in ['.git-ok-commits', '.hgignore', '.hgtags', '.gitignore', 'kernel', 'scripts', 'oss']:
+    for i in ['.git-ok-commits', '.hgignore', '.hgtags', '.gitignore', 'kernel', 'scripts',
+              'oss', 'usb/usbmixer.h', 'usb/usbmixer_maps.c']:
         if isdir("alsa-kmirror-repo/%s" % i):
             rmtree("alsa-kmirror-repo/%s" % i)
         elif exists("alsa-kmirror-repo/%s" % i):
@@ -290,6 +291,8 @@ def compare_trees(driver_repo, driver_branch, kernel_repo, kernel_branch):
     	      'usb/caiaq/caiaq-device.c', 'usb/caiaq/caiaq-device.h',
     	      'usb/caiaq/caiaq-input.c', 'usb/caiaq/caiaq-input.h',
     	      'usb/caiaq/caiaq-midi.c', 'usb/caiaq/caiaq-midi.h',
+    	      'usb/usbmixer.h',
+    	      'usb/usbmixer_maps.c',
     	      'isa/wavefront/yss225.c'
     	      ]:
         if isdir("alsa-kernel-repo/%s" % i):

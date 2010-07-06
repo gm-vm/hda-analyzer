@@ -9,8 +9,8 @@ VERBOSE = False
 GERRORS = 0
 TMPDIR = '/dev/shm/alsatool'
 SMTP_SERVER = 'localhost'
-GIT_KERNEL_MERGE = 'v2.6.32'
-GIT_DRIVER_MERGE = 'v1.0.21'
+GIT_KERNEL_MERGE = 'v2.6.33'
+GIT_DRIVER_MERGE = 'v1.0.22'
 GIT_MERGE_REPOS = [
         ('git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux-2.6.git', 'master', 'linux-2.6', 'http://www.kernel.org/pub/scm/linux/kernel/git/torvalds/linux-2.6.git'),
         ('git://git.alsa-project.org/alsa-kernel.git', 'fixes', 'perex-fixes', 'http://git.alsa-project.org/http/alsa-kernel.git'),

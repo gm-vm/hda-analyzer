@@ -602,6 +602,12 @@ def changes(argv):
                                                             continue
                                                     if l[:15].lower() == "signed-off-by: ":
                                                             continue
+                                                    if l[:10].lower() == "acked-by: ":
+                                                            continue
+                                                    if l[:6].lower() == "from: ":
+                                                            continue
+                                                    if l[:4].lower() == "cc: ":
+                                                            continue
                                                     print(': %s %s' % (first, esc(l)))
                                                     first = " "
     print('</text>')

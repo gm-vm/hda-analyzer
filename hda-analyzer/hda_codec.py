@@ -1219,6 +1219,189 @@ class HDACodec:
       return self.proc_codec.get_controls(nid)
     return None
 
+  def connections(self, nid, dir=0):
+    if dir == 0:
+      if nid in self.nodes:
+        conn = self.nodes[nid].connections
+        if conn:
+          return len(conn)
+      return 0
+    res = 0
+    for nid in self.nodes:
+      node = self.nodes[nid]
+      if nid != nid and node.connections and nid in node.connections:
+        res += 1
+    return res
+
+  def graph(self, dump=False):
+  
+    def mfind(nid):
+      for y in range(len(res)):
+        if nid in res[y]:
+          return (y, res[y].index(nid))
+      return None, None
+
+    def doplace(nid, y, x):
+      node = self.nodes[nid]
+      if node.wtype_id == 'AUD_MIX':
+        if y == 0:
+          y += 1
+        while 1:
+          x += 1
+          if x >= len(res[0]) - 1:
+            x = 1
+            y += 1
+          if y >= len(res) - 1:
+            raise ValueError, "cannot place nid to graph matrix"
+          if res[y][x+1] is None and \
+             res[y][x-1] is None and \
+             res[y+1][x] is None and \
+             res[y-1][x] is None and \
+             res[y][x] is None:
+            res[y][x] = nid
+            return True
+      if y == 0:
+        for idx in range(len(res)-2):
+          if res[idx+1][x] is None:
+            res[idx+1][x] = nid
+            return True
+      elif y == len(res)-1:
+        for idx in reversed(range(len(res)-2)):
+          if res[idx+1][x] is None:
+            res[idx+1][x] = nid
+            return True
+      elif x == 0:
+        for idx in range(len(res[0])-2):
+          if res[y][idx+1] is None:
+            res[y][idx+1] = nid
+            return True
+      elif x == len(res)-1:
+        for idx in range(len(res[0])-2):
+          if res[y][idx+1] is None:
+            res[y][idx+1] = nid
+            return True
+      else:
+        if y+1 < len(res) and res[y+1][x] is None:
+          res[y+1][x] = nid
+          return True
+        if y-1 != 0 and res[y-1][x] is None:
+          res[y-1][x] = nid
+          return True
+        if x+1 < len(res[0]) and res[y][x+1] is None:
+          res[y][x+1] = nid
+          return True
+        if x-1 != 0 and res[y][x-1] is None:
+          res[y][x-1] = nid
+          return True
+        if y+1 < len(res):
+          return doplace(nid, y+1, 1)
+        if x+1 < len(res[0]):
+          return doplace(nid, 1, x+1)
+        raise ValueError, "cannot place nid to graph matrix"
+      return False
+  
+    res = []
+    unplaced = []
+    # determine all termination widgets
+    terms = {'AUD_IN':[], 'AUD_OUT':[], 'PIN_IN':[], 'PIN_OUT':[]}
+    for nid in self.nodes:
+      node = self.nodes[nid]
+      if node.wtype_id in ['AUD_IN', 'AUD_OUT', 'PIN']:
+        id = node.wtype_id
+        if id == 'PIN':
+          id = 'IN' in node.pinctl and 'PIN_IN' or 'PIN_OUT'
+        terms[id].append(nid)
+      else:
+        unplaced.append(nid)
+    for id in terms:
+      terms[id].sort()
+    # build the matrix
+    x = max(len(terms['AUD_IN']), len(terms['AUD_OUT'])) + 2
+    y = max(len(terms['PIN_IN']), len(terms['PIN_OUT'])) + 2
+    if x == 2 and y == 2:
+      return None
+    for a in range(y):
+      res.append([None]*x)
+    if 'PIN_IN' in terms:
+      for idx in range(len(terms['PIN_IN'])):
+        res[idx+1][0] = terms['PIN_IN'][idx]
+    if 'PIN_OUT' in terms:
+      for idx in range(len(terms['PIN_OUT'])):
+        res[idx+1][-1] = terms['PIN_OUT'][idx]
+    if 'AUD_IN' in terms:
+      idx = 1
+      for nid in terms['AUD_IN']:
+        res[0][idx] = nid
+        idx += 1
+    if 'AUD_OUT' in terms:
+      idx = 1
+      for nid in terms['AUD_OUT']:
+        res[-1][idx] = nid
+        idx += 1
+    # check and resize the matrix for unplaced nodes
+    while len(res)**len(res[0]) < len(unplaced):
+      res.insert(-2, [None]*x)
+    # assign unplaced nids - check connections
+    unplaced.sort()
+    while unplaced:
+      change = len(unplaced)
+      for idx in range(len(res)):
+        for idx1 in range(len(res[idx])):
+          nid = res[idx][idx1]
+          if nid is None:
+            continue
+          node = self.nodes[nid]
+          if not node or not node.connections:
+            continue
+          for conn in node.connections:
+            if conn in unplaced and doplace(conn, idx, idx1):
+              unplaced.remove(conn)
+      for nid in unplaced:
+        node = self.nodes[nid]
+        if not node.connections:
+          continue
+        for conn in node.connections:
+          placed = False
+          y, x = mfind(nid)
+          if doplace(nid, y, x):
+            unplaced.remove(nid)
+            break
+      if len(unplaced) == change:
+        break
+    y = len(res)
+    x = 0
+    for nid in unplaced:
+      if y >= len(res):
+        res.append([None]*len(res[0]))
+      res[y][x] = nid
+      x += 1
+      if x >= len(res[0]):
+        y += 1
+        x = 0
+    # do extra check
+    check = []
+    for y in range(len(res)):
+      for x in range(len(res[0])):
+        nid = res[y][x]
+        if not nid is None:
+          if nid in check:
+            raise ValueError, "double nid in graph matrix"
+          if not nid in self.nodes:
+            raise ValueError, "unknown nid in graph matrix"
+          check.append(nid)
+    if len(check) != len(self.nodes):
+      raise ValueError, "not all nids in graph matrix"
+    # do addition dump
+    if dump:
+      print "****", len(self.nodes)
+      for nodes in res:
+        str = ''
+        for node2 in nodes:
+          str += node2 is None and '--  ' or '%02x  ' % node2
+        print str
+      print "****"
+    return res
+
 def HDA_card_list():
   from dircache import listdir
   result = []
