@@ -667,6 +667,7 @@ class CodecGraphLayout(gtk.Layout):
           self.queue_draw()
 
   def node_win_destroy(self, widget, node):
+    TRACKER.close(node.win)
     node.win = None
 
   def open_node(self, widget, node):
@@ -681,6 +682,7 @@ class CodecGraphLayout(gtk.Layout):
       win.connect("destroy", self.node_win_destroy, node)
       win.show_all()
       node.win = win
+      TRACKER.add(win)
     else:
       node.win.present()
     
@@ -815,9 +817,11 @@ class CodecGraph(gtk.Window):
     hScrollbar.set_adjustment(hAdjust)
     self.show_all()
     GRAPH_WINDOWS[codec] = self
+    TRACKER.add(self)
 
   def __destroy(self, widget):
     del GRAPH_WINDOWS[self.codec]
+    TRACKER.close(self)
 
 def create_graph(codec):
   if codec in GRAPH_WINDOWS:

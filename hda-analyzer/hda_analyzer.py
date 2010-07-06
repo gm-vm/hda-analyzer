@@ -213,6 +213,7 @@ class HDAAnalyzer(gtk.Window):
     self._new_notebook_page(scrolled_window, '_Text dump')
 
     self.show_all()    
+    TRACKER.add(self)
 
   def __destroy(self, widget):
     if do_diff():	
@@ -230,7 +231,7 @@ class HDAAnalyzer(gtk.Window):
             CODEC_TREE[card][codec].revert()
         print "Settings for all codecs were reverted..."
     
-    gtk.main_quit()
+    TRACKER.close(self)
 
   def simple_dialog(self, type, msg):
     dialog = gtk.MessageDialog(self,

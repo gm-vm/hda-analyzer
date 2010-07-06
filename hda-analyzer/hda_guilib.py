@@ -575,3 +575,20 @@ class NodeGui(gtk.ScrolledWindow):
     vbox.pack_start(self.__build_card_info(card), False, False)
     mframe.add(vbox)
     self.add_with_viewport(mframe)
+
+class TrackWindows:
+
+  def __init__(self):
+    self.windows = []
+    
+  def add(self, win):
+    if not win in self.windows:
+      self.windows.append(win)
+    
+  def close(self, win):
+    if win in self.windows:
+      self.windows.remove(win)
+      if not self.windows:
+        gtk.main_quit()
+
+TRACKER = TrackWindows()
