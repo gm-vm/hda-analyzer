@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+4#!/usr/bin/env python
 #
 # Copyright (c) 2008-2010 by Jaroslav Kysela <perex@perex.cz>
 #
@@ -36,6 +36,9 @@ class Node:
     self.src_routes = []
     self.dst_routes = []
     self.win = None
+
+  def longdesc(self):
+    return "0x%02x" % self.node.nid
 
   def expose(self, cr, event, graph):
 
@@ -135,7 +138,7 @@ class Route:
     self.highlight = False
     self.marked = False
 
-  def shortdest(self):
+  def shortdesc(self):
     return "0x%02x->0x%02x" % (self.src.node.nid, self.dst.node.nid)
 
   def longdesc(self):
@@ -143,6 +146,22 @@ class Route:
     dst = self.dst.node
     return "%s 0x%02x -> %s 0x%02x" % (src.wtype_id.replace('_', '-'),
                         src.nid, dst.wtype_id.replace('_', '-'), dst.nid)
+
+  def statusdesc(self):
+
+    def niceprint(prefix, val):
+      if val is None:
+        return prefix
+      return ' ' + prefix + ' ' + val
+
+    src = self.src.node
+    dst = self.dst.node
+    vals = src.get_conn_amp_vals_str(dst)
+    src = "%s 0x%02x" % (src.wtype_id.replace('_', '-'), src.nid)
+    dst = "%s 0x%02x" % (dst.wtype_id.replace('_', '-'), dst.nid)
+    res = niceprint("SRC " + src, vals[0]) + ' -> ' + \
+          niceprint("DST " + dst, vals[1])
+    return res
 
   def expose(self, cr, event):
     width = self.src.myarea[2]
@@ -163,10 +182,16 @@ class Route:
         cr.set_line_width(1.5)
         cr.set_source_rgb(1, 0, 0)
       else:
-        cr.set_line_width(0.5)
-        cr.set_source_rgb(0, 0, 0)
-      if len(line) > 4:
-        cr.set_source_rgb(0, 1, 0)
+        inactive = self.src.node.is_conn_active(self.dst.node)
+        if inactive is None:
+          cr.set_line_width(0.35)
+          cr.set_source_rgb(0, 0, 0)
+        elif inactive is False:
+          cr.set_line_width(0.35)
+          cr.set_source_rgb(0, 0, 1)
+        else:
+          cr.set_line_width(1.5)
+          cr.set_source_rgb(0, 0, 1)
       cr.move_to(line[0], line[1])
       cr.line_to(line[2], line[3])
       cr.stroke()
@@ -398,10 +423,10 @@ class Route:
       x1, y1, x2, y2 = line
       if x1 > x2 or y1 > y2:
         x2, y2, x1, y1 = line
-      if x1 == x2 and abs(x1 - x) < 2:
+      if x1 == x2 and abs(x1 - x) < 3:
         if y1 <= y and y2 >= y:
           return True
-      elif y1 == y2 and abs(y1 - y) < 2:
+      elif y1 == y2 and abs(y1 - y) < 3:
         if x1 <= x and x2 >= x:
           return True
 
@@ -412,24 +437,30 @@ class Route:
 
 class CodecGraphLayout(gtk.Layout):
 
-  def __init__(self, adj1, adj2, codec, mytitle):
+  def __init__(self, adj1, adj2, codec, mytitle, statusbar):
     gtk.Layout.__init__(self, adj1, adj2)
     self.set_events(0)
     self.add_events(gtk.gdk.EXPOSURE_MASK | gtk.gdk.POINTER_MOTION_MASK |
-                    gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK)
+                    gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK |
+                    gtk.gdk.LEAVE_NOTIFY_MASK)
     self.expose_handler = self.connect("expose-event", self.expose)
     self.click_handler = self.connect("button-press-event", self.button_click)
     self.release_handler = self.connect("button-release-event", self.button_release)
     self.motion_handler = self.connect("motion-notify-event", self.mouse_move)
+    self.mouse_leave_handler = self.connect("leave-notify-event", self.mouse_leave)
 
     self.popup_win = None
     self.popup = None
+    self.statusbar = statusbar
 
     self.codec = codec
     self.mytitle = mytitle
     self.graph = codec.graph(dump=False)
     self.startnode = None
     self.endnode = None
+
+    self.changed_handler = HDA_SIGNAL.connect("hda-node-changed", self.hda_node_changed)
+
     ok = False
     for extra in [150, 200, 300]:
       if self.build(extra):
@@ -443,7 +474,7 @@ class CodecGraphLayout(gtk.Layout):
     if self.popup_win:
       self.popup_win.destroy()
 
-  def build(self, extra=50):
+  def __build(self, extra=50):
     self.nodes = []
     self.routes = []
     maxconns = 0
@@ -465,6 +496,18 @@ class CodecGraphLayout(gtk.Layout):
     sx = len(self.graph[0])*(nodesize+extra)+extra
     sy = len(self.graph)*(nodesize+extra)+extra
     self.set_size(sx, sy)
+    total = 0
+    for node in self.nodes:
+      if not node.node.connections:
+        continue
+      for conn in node.node.connections:
+        for node1 in self.nodes:
+          if node1.node.nid == conn:
+            total += 1
+            break
+    total *= 2
+    total += 1
+    position = 0
     for node in self.nodes:
       if not node.node.connections:
         continue
@@ -473,12 +516,16 @@ class CodecGraphLayout(gtk.Layout):
           if node1.node.nid == conn:
             r = Route(self.codec, node1, node, self.routes, self.nodes)
             self.routes.append(r)
+            position += 1
+            self.pdialog.set_fraction(float(position) / total)
             break
     res = True
     for route in self.routes:
       if not route.finish(self.routes, self.nodes):
         res = False
         break
+      position += 1
+      self.pdialog.set_fraction(float(position) / total)
     if not res:
       return
     # final step - optimize drawings
@@ -487,12 +534,22 @@ class CodecGraphLayout(gtk.Layout):
       if not size:
         break
       sx -= size
+    position += 1
+    self.pdialog.set_fraction(float(position) / total)
     while 1:
       size = self.compressy(sy)
       if not size:
         break
       sy -= size
     self.set_size(sx, sy)
+    return res
+
+  def build(self, extra=50):
+    self.pdialog = SimpleProgressDialog("Rendering routes")
+    self.pdialog.show_all()
+    res = self.__build(extra)
+    self.pdialog.destroy()
+    self.pdialog = None
     return res
 
   def expose(self, widget, event):
@@ -567,6 +624,10 @@ class CodecGraphLayout(gtk.Layout):
         return size
     return None
 
+  def hda_node_changed(self, obj, widget, node):
+    if widget != self:
+      self.queue_draw()
+
   def find_node(self, event):
     for node in self.nodes:
       what = node.in_area(event.x, event.y)
@@ -581,7 +642,7 @@ class CodecGraphLayout(gtk.Layout):
 
   def show_popup(self, event):
     screen_width = gtk.gdk.screen_width()
-    screeen_height = gtk.gdk.screen_height()
+    screen_height = gtk.gdk.screen_height()
 
     if self.popup_win:
       self.popup_win.destroy()
@@ -590,23 +651,22 @@ class CodecGraphLayout(gtk.Layout):
     label.modify_font(get_fixed_font())
     label.set_text(self.popup)
     self.popup_win.add(label)
+    self.popup_win.move(screen_width + 10, screen_height + 10)
+    self.popup_win.show_all()
     popup_width, popup_height = self.popup_win.get_size()
 
-    rootwin = self.get_screen().get_root_window()
-    x, y, mods = rootwin.get_pointer()
+    #rootwin = self.get_screen().get_root_window()
+    #x, y, mods = rootwin.get_pointer()
 
-    pos_x = x - popup_width/2
+    pos_x = screen_width - popup_width
     if pos_x < 0:
       pos_x = 0
-    elif pos_x + popup_width > screen_width:
-      pos_x = screen_width - popup_width
-    
-    pos_y = y + 3
-    if pos_y + popup_height > screeen_height:
-      pos_y = event.y - 3 - popup_height                                                                                                                                                 
+    pos_y = screen_height - popup_height
+    if pos_y < 0:
+      pox_y = 0
 
     self.popup_win.move(int(pos_x), int(pos_y))
-    self.popup_win.show_all()
+    #self.popup_win.show_all()
 
   def mouse_move(self, widget, event):
     oldpopup = self.popup
@@ -619,13 +679,19 @@ class CodecGraphLayout(gtk.Layout):
         route.highlight = False
     for node in self.nodes:
       if node.mouse_move(event.x, event.y, self):
+        self.statusbar.pop(1)
+        self.statusbar.push(1, node.longdesc())
         found = redraw = True
         break
     if not found:
       for route in self.routes:
         if route.mouse_move(event.x, event.y, self):
+          self.statusbar.pop(1)
+          self.statusbar.push(1, route.statusdesc())
           found = redraw = True
           break
+    if not found:
+      self.statusbar.pop(1)
     if redraw:
       self.queue_draw()
     if self.popup:
@@ -634,6 +700,16 @@ class CodecGraphLayout(gtk.Layout):
     else:
       if self.popup_win:
         self.popup_win.destroy()
+        self.popup_win = None
+
+  def mouse_leave(self, widget, data=None):
+    for route in self.routes:
+      if route.highlight:
+        redraw = True
+        route.highlight = False
+    if self.popup_win:
+      self.popup_win.destroy()
+      self.popup_win = None
 
   def mark_it(self, widget, node, what, enable):
     if what == "start":
@@ -799,10 +875,11 @@ class CodecGraph(gtk.Window):
     self.set_title(self.__class__.__name__ + ' ' + self.codec.name)
     self.set_border_width(0)
 
-    table = gtk.Table(2, 2, False)
+    table = gtk.Table(2, 3, False)
     self.add(table)
 
-    self.layout = CodecGraphLayout(None, None, codec, self.get_title())
+    statusbar = gtk.Statusbar()
+    self.layout = CodecGraphLayout(None, None, codec, self.get_title(), statusbar)
     table.attach(self.layout, 0, 1, 0, 1, gtk.FILL|gtk.EXPAND,
                  gtk.FILL|gtk.EXPAND, 0, 0)
     vScrollbar = gtk.VScrollbar(None)
@@ -815,6 +892,8 @@ class CodecGraph(gtk.Window):
     vScrollbar.set_adjustment(vAdjust)
     hAdjust = self.layout.get_hadjustment()
     hScrollbar.set_adjustment(hAdjust)
+    table.attach(statusbar, 0, 2, 2, 3, gtk.FILL|gtk.SHRINK,
+                 gtk.FILL|gtk.SHRINK, 0, 0)
     self.show_all()
     GRAPH_WINDOWS[codec] = self
     TRACKER.add(self)

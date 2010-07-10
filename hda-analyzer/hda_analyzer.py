@@ -33,8 +33,6 @@ import gobject
 import gtk
 import pango
 
-DIFF_FILE = "/tmp/hda-analyze.diff"
-
 from hda_codec import HDACodec, HDA_card_list, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS, \
@@ -42,9 +40,6 @@ from hda_codec import HDACodec, HDA_card_list, \
 from hda_proc import DecodeProcFile, DecodeAlsaInfoFile, HDACodecProc
 from hda_guilib import *
 from hda_graph import create_graph
-
-CODEC_TREE = {}
-DIFF_TREE = {}
 
 def gethttpfile(url, size=1024*1024):
   from urllib import splithost
@@ -127,28 +122,6 @@ def read_nodes(proc_files):
       cnt += 1
   return cnt    
 
-def do_diff1(codec, diff1):
-  from difflib import unified_diff
-  diff = unified_diff(diff1.split('\n'), codec.dump().split('\n'), n=8, lineterm='')
-  diff = '\n'.join(list(diff))
-  if len(diff) > 0:
-    diff = 'Diff for codec %i/%i (%s):\n' % (codec.card, codec.device, codec.name) + diff
-  return diff
-
-def do_diff():
-  diff = ''
-  hw = 0
-  for card in CODEC_TREE:
-    for codec in CODEC_TREE[card]:
-      c = CODEC_TREE[card][codec]
-      if c.hwaccess:
-        hw += 1
-      diff += do_diff1(c, DIFF_TREE[card][codec])
-  if len(diff) > 0:
-    open(DIFF_FILE, "w+").write(diff + '\n')
-    print "Diff was stored to: %s" % DIFF_FILE
-  return (diff and hw > 0) and True or False
-
 (
     TITLE_COLUMN,
     CARD_COLUMN,
@@ -216,21 +189,6 @@ class HDAAnalyzer(gtk.Window):
     TRACKER.add(self)
 
   def __destroy(self, widget):
-    if do_diff():	
-      dialog = gtk.MessageDialog(self,
-                      gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-                      gtk.MESSAGE_QUESTION, gtk.BUTTONS_YES_NO,
-                      "HDA-Analyzer: Would you like to revert\n"
-                      "settings for all HDA codecs?")
-      response = dialog.run()
-      dialog.destroy()
-    
-      if response == gtk.RESPONSE_YES:
-        for card in CODEC_TREE:
-          for codec in CODEC_TREE[card]:
-            CODEC_TREE[card][codec].revert()
-        print "Settings for all codecs were reverted..."
-    
     TRACKER.close(self)
 
   def simple_dialog(self, type, msg):
@@ -361,8 +319,9 @@ mailing list, too.
     else:
       n = codec.get_node(node)
 
-    for child in self.node_window.get_children():
+    for child in self.node_window.get_children()[:]:
       self.node_window.remove(child)
+      child.destroy()
 
     if not n:
       if not codec:
@@ -516,7 +475,8 @@ def main(argv):
       for card in CODEC_TREE:
         for codec in CODEC_TREE:
           create_graph(CODEC_TREE[card][codec])
-    HDAAnalyzer()
+    else:
+      HDAAnalyzer()
     gtk.main()
   return 1
 

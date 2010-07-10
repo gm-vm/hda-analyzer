@@ -239,28 +239,77 @@ class HDAAmpCaps:
     self.codec = codec
     self.nid = nid
     self.dir = dir
+    self.cloned = False
     self.reread()
     
   def reread(self):
     caps = self.codec.param_read(self.nid,
           PARAMS[self.dir == HDA_OUTPUT and 'AMP_OUT_CAP' or 'AMP_IN_CAP'])
     if caps == ~0 or caps == 0:
-      self.ofs = None
-      self.nsteps = None
-      self.stepsize = None
-      self.mute = None
+      if self.dir == HDA_INPUT:
+        ccaps = self.codec.amp_caps_in
+      else:
+        ccaps = self.codec.amp_caps_out
+      if ccaps:
+        ccaps.clone(self)
+      else:
+        self.ofs = self.nsteps = self.stepsize = self.mute = None
     else:
       self.ofs = caps & 0x7f
       self.nsteps = (caps >> 8) & 0x7f
       self.stepsize = (caps >> 16) & 0x7f
       self.mute = (caps >> 31) & 1 and True or False
 
+  def clone(self, ampcaps):
+    ampcaps.ofs = self.ofs
+    ampcaps.nsteps = self.steps
+    ampcaps.stepsize = self.stepsize
+    ampcaps.mute = self.mute
+    ampcaps.cloned = True
+
+  def get_val_db(self, val):
+    if self.ofs is None:
+      return None
+    if val & 0x80:
+      return -999999
+    range = (self.stepsize + 1) * 25
+    off = -self.ofs * range
+    if val >= self.nsteps:
+      db = off + self.nsteps * range
+      if val != 0 or self.nsteps != 0:
+        print "val > nsteps? for nid 0x%02x" % self.nid, val, self.nsteps
+    else:
+      db = off + val * range
+    return db
+
+  def get_val_perc(self, val):
+    if self.ofs is None:
+      return None
+    if self.nsteps == 0:
+      return 0
+    return (val * 100) / self.nsteps
+
+  def get_val_str(self, val):
+    if self.ofs is None:
+      return "0x%02x" % val
+    else:
+      db = self.get_val_db(val & 0x7f)
+      res = val & 0x80 and "{mute-" or "{"
+      res += "0x%02x" % (val & 0x7f)
+      res += ":%02i.%idB" % (db / 100, db % 100)
+      res += ":%i%%}" % (self.get_val_perc(val & 0x7f))
+      return res
+
 class HDAAmpVal:
 
-  def __init__(self, codec, node, dir):
+  def __init__(self, codec, node, dir, caps):
     self.codec = codec
     self.node = node
     self.dir = dir
+    if caps.ofs == None:
+      self.caps = dir == HDA_INPUT and codec.amp_caps_in or codec.amp_caps_out
+    else:
+      self.caps = caps
     self.nid = node.nid
     self.stereo = node.stereo
     self.indices = 1
@@ -283,15 +332,20 @@ class HDAAmpVal:
   def set_mute(self, idx, mute):
     val = self.vals[idx]
     if mute:
+      changed = (self.vals[idx] & 0x80) == 0
       self.vals[idx] |= 0x80
     else:
+      changed = (self.vals[idx] & 0x80) == 0x80
       self.vals[idx] &= ~0x80
     self.__write_val(idx)
+    return changed
     
   def set_value(self, idx, val):
+    changed = (self.vals[idx] & 0x7f) != val
     self.vals[idx] &= ~0x7f
     self.vals[idx] |= val & 0x7f
     self.__write_val(idx)
+    return changed
     
   def reread(self):
     dir = self.dir == HDA_OUTPUT and (1<<15) or (0<<15)
@@ -310,6 +364,27 @@ class HDAAmpVal:
     self.vals = self.origin_vals[:]
     for idx in range(len(self.vals)):
       self.__write_val(idx)
+
+  def get_val(self, idx):
+    if self.stereo:
+      return [self.vals[idx*2], self.vals[idx*2+1]]
+    return self.vals[idx]
+
+  def get_val_db(self, idx):
+    vals = self.get_val(idx)
+    res = []
+    for val in vals:
+      res.append(self.caps.get_val_db(val))
+    return res
+
+  def get_val_str(self, idx):
+
+    def niceval(val):
+      return self.caps.get_val_str(val)
+
+    if self.stereo:
+      return '[' + niceval(self.vals[idx*2]) + ' ' + niceval(self.vals[idx*2+1]) + ']'
+    return niceval(self.vals[idx])
 
 class HDARootNode:
 
@@ -386,9 +461,12 @@ class HDANode:
     return self.wtype_name() + " [0x%02x]" % self.nid
 
   def set_active_connection(self, val):
+    changed = False
     if self.active_connection != None:
+      changed = self.active_connection != val 
       self.codec.rw(self.nid, VERBS['SET_CONNECT_SEL'], val)
       self.active_connection = self.codec.rw(self.nid, VERBS['GET_CONNECT_SEL'], 0)
+    return changed
     
   def reread(self):
   
@@ -428,10 +506,10 @@ class HDANode:
           self.origin_active_connection = self.active_connection
     if self.in_amp:
       self.amp_caps_in = HDAAmpCaps(self.codec, self.nid, HDA_INPUT)
-      self.amp_vals_in = HDAAmpVal(self.codec, self, HDA_INPUT)
+      self.amp_vals_in = HDAAmpVal(self.codec, self, HDA_INPUT, self.amp_caps_in)
     if self.out_amp:
       self.amp_caps_out = HDAAmpCaps(self.codec, self.nid, HDA_OUTPUT)
-      self.amp_vals_out = HDAAmpVal(self.codec, self, HDA_OUTPUT)
+      self.amp_vals_out = HDAAmpVal(self.codec, self, HDA_OUTPUT, self.amp_caps_out)
     if self.wtype_id == 'PIN':
       jack_conns = ["Jack", "N/A", "Fixed", "Both"]
       jack_types = ["Line Out", "Speaker", "HP Out", "CD", "SPDIF Out",
@@ -537,12 +615,15 @@ class HDANode:
 
   def eapdbtl_set_value(self, name, value):
     mask = 1 << EAPDBTL_BITS[name]
+    value = value and True or False
+    changed = (self.pincap_eapdbtls & mask) and not value or value
     if value:
       self.pincap_eapdbtls |= mask
     else:
       self.pincap_eapdbtls &= ~mask
     self.codec.rw(self.nid, VERBS['SET_EAPD_BTLENABLE'], self.pincap_eapdbtls)
     self.reread_eapdbtl()
+    return changed
 
   def reread_pin_widget_control(self):
     pinctls = self.codec.rw(self.nid, VERBS['GET_PIN_WIDGET_CONTROL'], 0)
@@ -560,16 +641,20 @@ class HDANode:
   def pin_widget_control_set_value(self, name, value):
     if name in PIN_WIDGET_CONTROL_BITS:
       mask = 1 << PIN_WIDGET_CONTROL_BITS[name]
+      value = value and True or False
+      changed = (self.pinctls & mask) and not value or value
       if value:
         self.pinctls |= mask
       else:
         self.pinctls &= ~mask
     elif name == 'vref' and self.pincap_vref:
       idx = PIN_WIDGET_CONTROL_VREF.index(value)
+      changed = (self.pinctls & 0x07) != idx
       self.pinctls &= ~0x07
       self.pinctls |= idx
     self.codec.rw(self.nid, VERBS['SET_PIN_WIDGET_CONTROL'], self.pinctls)
     self.reread_pin_widget_control()
+    return changed
 
   def reread_vol_knb(self):
     cap = self.codec.rw(self.nid, VERBS['GET_VOLUME_KNOB_CONTROL'], 0)
@@ -581,15 +666,19 @@ class HDANode:
     
   def vol_knb_set_value(self, name, value):
     if name == 'direct':
+      value = value and True or False
+      changed = (self.vol_knb & (1 << 7)) and not value or value      
       if value:
         self.vol_knb |= (1 << 7)
       else:
         self.vol_knb &= ~(1 << 7)
     elif name == 'value':
-      self.vol_knb &= 0x7f
+      changed = (self.vol_knb & 0x7f) != value
+      self.vol_knb &= ~0x7f
       self.vol_knb |= value
     self.codec.rw(self.nid, VERBS['SET_VOLUME_KNOB_CONTROL'], self.vol_knb)
-    self.reread_vol_knb() 
+    self.reread_vol_knb()
+    return changed
 
   def reread_sdi_select(self):
     self.sdi_select = None
@@ -600,10 +689,13 @@ class HDANode:
         self.origin_sdi_select = sdi
 
   def sdi_select_set_value(self, value):
+    changed = False
     if self.sdi_select != None:
+      changed = (self.sdi_select & 0x0f) != value
       self.sdi_select = value & 0x0f
       self.codec.rw(self.nid, VERBS['SET_SDI_SELECT'], self.sdi_select)
       self.reread_sdi_select()
+    return changed
 
   def reread_dig1(self):
     self.dig1 = []
@@ -621,17 +713,21 @@ class HDANode:
 
   def dig1_set_value(self, name, value):
     if name == 'category':
+      changed = ((self.digi1 >> 8) & 0x7f) != (value & 0x7f)
       self.digi1 &= ~0x7f00
       self.digi1 |= (value & 0x7f) << 8
       self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_2'], (self.digi1 >> 8) & 0xff)
     else:
       mask = 1 << DIG1_BITS[name]
+      value = value and True or False
+      changed = (self.digi1 & mask) and not value or value      
       if value:
         self.digi1 |= mask
       else:
         self.digi1 &= ~mask
       self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_1'], self.digi1 & 0xff)
     self.reread_dig1()
+    return changed
 
   def revert(self):
     if self.origin_active_connection != None:
@@ -658,6 +754,57 @@ class HDANode:
 
   def get_controls(self):
     return self.codec.get_controls(self.nid)
+
+  def get_conn_amp_vals_str(self, dst_node):
+    # return amp values for connection between this and dst_node
+    res = []
+    if self.out_amp:
+      res.append(self.amp_vals_out.get_val_str(0))
+    else:
+      res.append(None)
+    if dst_node.in_amp:
+      idx = 0
+      if dst_node.amp_vals_in.indices == dst_node.connections:
+        if not self.nid in dst_node.connections:
+          raise ValueError, "nid 0x%02x is not connected to nid 0x%02x (%s, %s)" % (dst_node.nid, self.nid, repr(self.connections), repr(dst_node.connections))
+        idx = dst_node.connections.index(self.nid)
+      res.append(dst_node.amp_vals_in.get_val_str(idx))
+    else:
+      res.append(None)
+    return res
+
+  def is_conn_active(self, dst_node):
+    # disabled route for PIN widgets
+    if self.wtype_id == 'PIN' and not 'IN' in self.pinctl:
+      return None
+    if dst_node.wtype_id == 'PIN' and not 'OUT' in dst_node.pinctl:
+      return None
+    res = [None, None]
+    if self.out_amp:
+      vals = self.amp_vals_out.get_val_db(0)
+      for idx in range(len(vals)):
+        if res[idx]:
+          res[idx] += vals[idx]
+        else:
+          res[idx] = vals[idx]
+    if dst_node.in_amp:
+      idx = 0
+      if dst_node.amp_vals_in.indices == dst_node.connections:
+        if not self.nid in dst_node.connections:
+          raise ValueError, "nid 0x%02x is not connected to nid 0x%02x (%s, %s)" % (dst_node.nid, self.nid, repr(self.connections), repr(dst_node.connections))
+        idx = dst_node.connections.index(self.nid)
+      vals = dst_node.amp_vals_in.get_val_db(idx)
+      for idx in range(len(vals)):
+        if res[idx]:
+          res[idx] += vals[idx]
+        else:
+          res[idx] = vals[idx]
+    if res[0] is None and res[1] is None:
+      return True
+    for r in res:
+      if r >= -1200:
+        return True
+    return False
 
 class HDAGPIO:
 
@@ -691,8 +838,9 @@ class HDAGPIO:
     else:
       self.val[name] &= ~(1 << bit)
     if old == self.test(name, bit):
-      return
+      return False
     self.write(name)
+    return True
 
   def revert(self):
     for i in GPIO_IDS:

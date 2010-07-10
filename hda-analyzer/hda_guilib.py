@@ -21,22 +21,89 @@ from hda_codec import HDACodec, HDA_card_list, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS, \
                       HDA_INPUT, HDA_OUTPUT
 
+DIFF_FILE = "/tmp/hda-analyze.diff"
+
+CODEC_TREE = {}
+DIFF_TREE = {}
+
 def get_fixed_font():
   return pango.FontDescription("Misc Fixed,Courier Bold 9")
+
+class HDASignal(gobject.GObject):
+
+  def __init__(self):
+    self.__gobject_init__()
+
+gobject.signal_new("hda-codec-changed", HDASignal,
+                   gobject.SIGNAL_RUN_FIRST,
+                   gobject.TYPE_NONE,
+                   (gobject.TYPE_PYOBJECT,gobject.TYPE_PYOBJECT))
+gobject.signal_new("hda-node-changed", HDASignal,
+                   gobject.SIGNAL_RUN_FIRST,
+                   gobject.TYPE_NONE,
+                   (gobject.TYPE_PYOBJECT,gobject.TYPE_PYOBJECT))
+
+HDA_SIGNAL = HDASignal()
+
+def do_diff1(codec, diff1):
+  from difflib import unified_diff
+  diff = unified_diff(diff1.split('\n'), codec.dump().split('\n'), n=8, lineterm='')
+  diff = '\n'.join(list(diff))
+  if len(diff) > 0:
+    diff = 'Diff for codec %i/%i (%s):\n' % (codec.card, codec.device, codec.name) + diff
+  return diff
+
+def do_diff():
+  diff = ''
+  hw = 0
+  for card in CODEC_TREE:
+    for codec in CODEC_TREE[card]:
+      c = CODEC_TREE[card][codec]
+      if c.hwaccess:
+        hw += 1
+      diff += do_diff1(c, DIFF_TREE[card][codec])
+  if len(diff) > 0:
+    open(DIFF_FILE, "w+").write(diff + '\n')
+    print "Diff was stored to: %s" % DIFF_FILE
+  return (diff and hw > 0) and True or False
 
 class NodeGui(gtk.ScrolledWindow):
 
   def __init__(self, card=None, codec=None, node=None, doframe=False):
     gtk.ScrolledWindow.__init__(self)
     self.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-    self.set_shadow_type(gtk.SHADOW_IN)    
+    self.set_shadow_type(gtk.SHADOW_IN)
+    self.read_all = self.__read_all_none
+    self.node = None
+    self.codec = None
     if card and not codec and not node:
       self.__build_card(card, doframe)
     elif codec and not card and not node:
       self.__build_codec(codec, doframe)
     elif node and not card and not codec:
       self.__build_node(node, doframe)
+    self.connect("destroy", self.__destroy)
+    self.codec_changed = HDA_SIGNAL.connect("hda-codec-changed", self.hda_codec_changed)
+    self.node_changed = HDA_SIGNAL.connect("hda-node-changed", self.hda_node_changed)
+    self.read_all()
     self.show_all()
+
+  def __destroy(self, widget):
+    HDA_SIGNAL.handler_disconnect(self.codec_changed)
+    HDA_SIGNAL.handler_disconnect(self.node_changed)
+
+  def __read_all_none(self):
+    pass
+
+  def hda_codec_changed(self, obj, widget, codec):
+    if widget != self:
+      if self.read_all and self.codec == codec:
+        self.read_all()
+    
+  def hda_node_changed(self, obj, widget, node):
+    if widget != self:
+      if self.read_all and self.node == node:
+        self.read_all()
 
   def __create_text(self, callback):
     scrolled_window = gtk.ScrolledWindow()
@@ -88,7 +155,8 @@ class NodeGui(gtk.ScrolledWindow):
   def __node_connection_toggled(self, widget, row, data):
     model, node = data
     if not model[row][0]:
-      node.set_active_connection(int(row))
+      if node.set_active_connection(int(row)):
+        HDA_SIGNAL.emit("hda-node-changed", self, node)
     for r in model:
       r[0] = False
     idx = 0
@@ -115,18 +183,19 @@ class NodeGui(gtk.ScrolledWindow):
         model.set(iter, 0, node.active_connection == idx,
                         1, node1.name())
         idx += 1
+      self.connection_model = model
       treeview = gtk.TreeView(model)
       treeview.set_rules_hint(True)
       treeview.get_selection().set_mode(gtk.SELECTION_SINGLE)
       treeview.set_size_request(300, 30 + len(node.connections) * 25)
       renderer = gtk.CellRendererToggle()
       renderer.set_radio(True)
-      if node.active_connection != None:
+      if not node.active_connection is None:
         renderer.connect("toggled", self.__node_connection_toggled, (model, node))
       column = gtk.TreeViewColumn("Active", renderer, active=0)
       treeview.append_column(column)
       renderer = gtk.CellRendererText()
-      column = gtk.TreeViewColumn("Destination Node", renderer, text=1, editable=False)
+      column = gtk.TreeViewColumn("Source Node", renderer, text=1, editable=False)
       treeview.append_column(column)
       sw.add(treeview)
     return frame
@@ -134,21 +203,21 @@ class NodeGui(gtk.ScrolledWindow):
   def __amp_mute_toggled(self, button, data):
     caps, vals, idx = data
     val = button.get_active()
-    vals.set_mute(idx, val)
+    if vals.set_mute(idx, val):
+      HDA_SIGNAL.emit("hda-node-changed", self, vals.node)
     button.set_active(vals.vals[idx] & 0x80)
 
   def __amp_value_changed(self, adj, data):
     caps, vals, idx = data
     val = int(adj.get_value())
-    vals.set_value(idx, val)
+    if vals.set_value(idx, val):
+      HDA_SIGNAL.emit("hda-node-changed", self, vals.node)
     adj.set_value(vals.vals[idx] & 0x7f)
 
   def __build_amps(self, node):
 
     def build_caps(title, caps, vals):
-      if caps and caps.ofs is None:
-        caps = caps.dir == HDA_INPUT and \
-                    node.codec.amp_caps_in or node.codec.amp_caps_out
+      if caps and caps.cloned:
         title += ' (Global)'
       frame = gtk.Frame(title)
       frame.set_border_width(4)
@@ -162,6 +231,8 @@ class NodeGui(gtk.ScrolledWindow):
         idx = 0
         frame1 = None
         vbox1 = None
+        self.amp_checkbuttons[caps.dir] = []
+        self.amp_adjs[caps.dir] = []
         for val in vals.vals:
           if vals.stereo and idx & 1 == 0:
             frame1 = gtk.Frame()
@@ -173,16 +244,21 @@ class NodeGui(gtk.ScrolledWindow):
           hbox.pack_start(label, False, False)
           if caps.mute:
             checkbutton = gtk.CheckButton('Mute')
-            checkbutton.set_active(val & 0x80 and True or False)
             checkbutton.connect("toggled", self.__amp_mute_toggled, (caps, vals, idx))
+            self.amp_checkbuttons[caps.dir].append(checkbutton)
             hbox.pack_start(checkbutton, False, False)
+          else:
+            self.amp_checkbuttons[caps.dir].append(None)
           if caps.stepsize > 0:
             adj = gtk.Adjustment((val & 0x7f) % (caps.nsteps+1), 0.0, caps.nsteps+1, 1.0, 1.0, 1.0)
             scale = gtk.HScale(adj)
             scale.set_digits(0)
             scale.set_value_pos(gtk.POS_RIGHT)
             adj.connect("value_changed", self.__amp_value_changed, (caps, vals, idx))
+            self.amp_adjs[caps.dir].append(adj)
             hbox.pack_start(scale, True, True)
+          else:
+            self.amp_adjs[caps.dir].append(None)
           if vbox1:
             vbox1.pack_start(hbox, False, False)
           else:
@@ -191,6 +267,8 @@ class NodeGui(gtk.ScrolledWindow):
       frame.add(vbox)
       return frame
 
+    self.amp_checkbuttons = {}
+    self.amp_adjs = {}
     hbox = gtk.HBox(False, 0)
     c = build_caps('Input Amplifier',
                     node.in_amp and node.amp_caps_in or None,
@@ -205,12 +283,14 @@ class NodeGui(gtk.ScrolledWindow):
 
   def __pincap_eapdbtl_toggled(self, button, data):
     node, name = data
-    node.eapdbtl_set_value(name, button.get_active())
+    if node.eapdbtl_set_value(name, button.get_active()):
+      HDA_SIGNAL.emit("hda-node-changed", self, node)
     button.set_active(name in node.pincap_eapdbtl)
 
   def __pinctls_toggled(self, button, data):
     node, name = data
-    node.pin_widget_control_set_value(name, button.get_active())
+    if node.pin_widget_control_set_value(name, button.get_active()):
+      HDA_SIGNAL.emit("hda-node-changed", self, node)
     button.set_active(name in node.pinctl)
 
   def __pinctls_vref_change(self, combobox, node):
@@ -219,7 +299,8 @@ class NodeGui(gtk.ScrolledWindow):
     for name in PIN_WIDGET_CONTROL_VREF:
       if not name: continue
       if idx1 == index:
-        node.pin_widget_control_set_value('vref', name)
+        if node.pin_widget_control_set_value('vref', name):
+          HDA_SIGNAL.emit("hda-node-changed", self, node)
         break
       idx1 += 1
     idx = idx1 = 0
@@ -249,10 +330,11 @@ class NodeGui(gtk.ScrolledWindow):
         frame = gtk.Frame('EAPD')
         frame.set_border_width(4)
         vbox1 = gtk.VBox(False, 0)
+        self.pincap_eapdbtls_checkbuttons = []
         for name in EAPDBTL_BITS:
           checkbutton = gtk.CheckButton(name)
-          checkbutton.set_active(node.pincap_eapdbtls & (1 << EAPDBTL_BITS[name]))
           checkbutton.connect("toggled", self.__pincap_eapdbtl_toggled, (node, name))
+          self.pincap_eapdbtls_checkbuttons.append(checkbutton)
           vbox1.pack_start(checkbutton, False, False)
         frame.add(vbox1)
         vbox.pack_start(frame, False, False)
@@ -276,22 +358,19 @@ class NodeGui(gtk.ScrolledWindow):
     frame = gtk.Frame('Widget Control')
     frame.set_border_width(4)
     vbox1 = gtk.VBox(False, 0)
+    self.pin_checkbuttons = []
     for name in PIN_WIDGET_CONTROL_BITS:
       checkbutton = gtk.CheckButton(name)
-      checkbutton.set_active(node.pinctls & (1 << PIN_WIDGET_CONTROL_BITS[name]))
       checkbutton.connect("toggled", self.__pinctls_toggled, (node, name))
+      self.pin_checkbuttons.append(checkbutton)
       vbox1.pack_start(checkbutton, False, False)
     if node.pincap_vref:
       combobox = gtk.combo_box_new_text()
-      idx = idx1 = active = 0
       for name in PIN_WIDGET_CONTROL_VREF:
-        if name == node.pinctl_vref: active = idx1
         if name:
           combobox.append_text(name)
-          idx1 += 1
-        idx += 1
-      combobox.set_active(active)
       combobox.connect("changed", self.__pinctls_vref_change, node)
+      self.pincap_vref_combobox = combobox
       hbox1 = gtk.HBox(False, 0)
       label = gtk.Label('VREF')
       hbox1.pack_start(label, False, False)
@@ -309,13 +388,15 @@ class NodeGui(gtk.ScrolledWindow):
 
   def __sdi_select_changed(self, adj, node):
     val = int(adj.get_value())
-    node.sdi_select_set_value(val)
+    if node.sdi_select_set_value(val):
+      HDA_SIGNAL.emit("hda-node-changed", self, node)
     adj.set_value(node.sdi_select)
 
   def __dig1_toggled(self, button, data):
     node, name = data
     val = button.get_active()
-    node.dig1_set_value(name, val)
+    if node.dig1_set_value(name, val):
+      HDA_SIGNAL.emit("hda-node-changed", self, node)
     button.set_active(name in node.dig1)
 
   def __dig1_category_activate(self, entry, node):
@@ -328,7 +409,8 @@ class NodeGui(gtk.ScrolledWindow):
       except:
         print "Unknown category value '%s'" % val
         return
-    node.dig1_set_value('category', val)
+    if node.dig1_set_value('category', val):
+      HDA_SIGNAL.emit("hda-node-changed", self, node)
     entry.set_text("0x%02x" % node.dig1_category)
 
   def __build_aud(self, node):
@@ -357,6 +439,7 @@ class NodeGui(gtk.ScrolledWindow):
       hbox1 = gtk.HBox(False, 0)
       frame = gtk.Frame('SDI Select')
       adj = gtk.Adjustment(node.sdi_select, 0.0, 16.0, 1.0, 1.0, 1.0)
+      self.sdi_select_adj = adj
       scale = gtk.HScale(adj)
       scale.set_digits(0)
       scale.set_value_pos(gtk.POS_LEFT)
@@ -370,10 +453,11 @@ class NodeGui(gtk.ScrolledWindow):
       hbox1 = gtk.HBox(False, 0)
       frame = gtk.Frame('Digital Converter')
       vbox1 = gtk.VBox(False, 0)
+      self.digital_checkbuttons = []
       for name in DIG1_BITS:
         checkbutton = gtk.CheckButton(name)
-        checkbutton.set_active(node.digi1 & (1 << DIG1_BITS[name]))
         checkbutton.connect("toggled", self.__dig1_toggled, (node, name))
+        self.digital_checkbuttons.append(checkbutton)
         vbox1.pack_start(checkbutton, False, False)
       frame.add(vbox1)
       hbox1.pack_start(frame)
@@ -431,7 +515,60 @@ class NodeGui(gtk.ScrolledWindow):
     frame.add(self.__new_text_view(text=str))
     return frame
 
+  def __read_all_node(self):
+    node = self.node
+    if node.wtype_id in ['AUD_IN', 'AUD_OUT']:
+      if not node.sdi_select is None:
+        self.sdi_select_adj.set_value(node.sdi_select)
+      if node.digital:
+        idx = 0
+        for name in DIG1_BITS:
+          checkbutton = self.digital_checkbuttons[idx]
+          checkbutton.set_active(node.digi1 & (1 << DIG1_BITS[name]))
+          idx += 1
+    elif node.wtype_id == 'PIN':
+      if 'EAPD' in node.pincap:
+        idx = 0
+        for name in EAPDBTL_BITS:
+          checkbutton = self.pincap_eapdbtls_checkbuttons[idx]
+          checkbutton.set_active(node.pincap_eapdbtls & (1 << EAPDBTL_BITS[name]))
+          idx += 1
+      idx = 0
+      for name in PIN_WIDGET_CONTROL_BITS:
+        checkbutton = self.pin_checkbuttons[idx]
+        checkbutton.set_active(node.pinctls & (1 << PIN_WIDGET_CONTROL_BITS[name]))
+        idx += 1
+      idx = active = 0
+      for name in PIN_WIDGET_CONTROL_VREF:
+        if name == node.pinctl_vref: active = idx
+        if name: idx += 1
+      if node.pincap_vref:
+        self.pincap_vref_combobox.set_active(active)
+      a = []
+      if node.in_amp:
+        a.append((HDA_INPUT, node.amp_caps_in, node.amp_vals_in))
+      if node.out_amp:
+        a.append((HDA_OUTPUT, node.amp_caps_out, node.amp_vals_out))
+      for dir, caps, vals in a:
+        for idx in range(len(vals.vals)):
+          val = vals.vals[idx]
+          checkbutton = self.amp_checkbuttons[dir][idx]
+          if checkbutton:
+            checkbutton.set_active(val & 0x80 and True or False)
+          adj = self.amp_adjs[dir][idx]
+          if adj:
+            adj.set_value((val & 0x7f) % (caps.nsteps+1))
+          idx += 1
+    if hasattr(self, 'connection_model'):
+      for r in self.connection_model:
+        r[0] = False
+      idx = 0
+      for r in self.connection_model:
+        r[0] = node.active_connection == idx
+        idx += 1
+
   def __build_node(self, node, doframe=False):
+    self.node = node
     self.mytitle = node.name()
     if doframe:
       mframe = gtk.Frame(self.mytitle)
@@ -464,6 +601,8 @@ class NodeGui(gtk.ScrolledWindow):
 
     mframe.add(vbox)
     self.add_with_viewport(mframe)
+
+    self.read_all = self.__read_all_node
 
   def __build_codec_info(self, codec):
     vbox = gtk.VBox(False, 0)
@@ -512,7 +651,8 @@ class NodeGui(gtk.ScrolledWindow):
     return hbox
 
   def __gpio_toggled(self, button, (codec, id, idx)):
-    codec.gpio.set(id, idx, button.get_active())
+    if codec.gpio.set(id, idx, button.get_active()):
+      HDA_SIGNAL.emit("hda-codec-changed", self, codec)
     button.set_active(codec.gpio.test(id, idx))
 
   def __build_codec_gpio(self, codec):
@@ -526,21 +666,31 @@ class NodeGui(gtk.ScrolledWindow):
     str += 'Wake:        %s\n' % (codec.gpio_wake and "True" or "False")
     hbox.pack_start(self.__new_text_view(text=str), False, False)
     frame.add(hbox)
+    self.gpio_checkbuttons = []
     for id in GPIO_IDS:
       id1 = id == 'direction' and 'out-dir' or id
       frame1 = gtk.Frame(id1)
       frame1.set_border_width(4)
       vbox1 = gtk.VBox(False, 0)
+      self.gpio_checkbuttons.append([])
       for i in range(codec.gpio_max):
-        checkbutton = gtk.CheckButton('[%d]' % i)
-        checkbutton.set_active(codec.gpio.test(id, i))
+        checkbutton = checkbutton = gtk.CheckButton('[%d]' % i)
         checkbutton.connect("toggled", self.__gpio_toggled, (codec, id, i))
+        self.gpio_checkbuttons[-1].append(checkbutton)
         vbox1.pack_start(checkbutton, False, False)
       frame1.add(vbox1)
       hbox.pack_start(frame1, False, False)
     return frame
 
+  def __read_all_codec(self):
+    idx = 0
+    for id in GPIO_IDS:
+      for i in range(self.codec.gpio_max):
+        self.gpio_checkbuttons[idx][i].set_active(self.codec.gpio.test(id, i))
+      idx += 1
+
   def __build_codec(self, codec, doframe=False):
+    self.codec = codec
     self.mytitle = codec.name
     if doframe:
       mframe = gtk.Frame(self.mytitle)
@@ -554,6 +704,7 @@ class NodeGui(gtk.ScrolledWindow):
     vbox.pack_start(self.__build_codec_gpio(codec), False, False)
     mframe.add(vbox)
     self.add_with_viewport(mframe)
+    self.read_all = self.__read_all_codec
 
   def __build_card_info(self, card):
     str =  'Card:       %s\n' % card.card
@@ -576,6 +727,23 @@ class NodeGui(gtk.ScrolledWindow):
     mframe.add(vbox)
     self.add_with_viewport(mframe)
 
+class SimpleProgressDialog(gtk.Dialog):
+
+  def __init__(self, title):
+    gtk.Dialog.__init__(self, title, None, gtk.DIALOG_MODAL, None)
+    self.set_deletable(False)
+
+    box = self.get_child()
+
+    box.pack_start(gtk.Label(), False, False, 0)
+    self.progressbar = gtk.ProgressBar()
+    box.pack_start(self.progressbar, False, False, 0)    
+
+  def set_fraction(self, fraction):
+    self.progressbar.set_fraction(fraction)
+    while gtk.events_pending():   
+      gtk.main_iteration_do(False)
+                          
 class TrackWindows:
 
   def __init__(self):
@@ -589,6 +757,23 @@ class TrackWindows:
     if win in self.windows:
       self.windows.remove(win)
       if not self.windows:
+        self.do_diff(win)
         gtk.main_quit()
+
+  def do_diff(self, widget):
+    if do_diff():	
+      dialog = gtk.MessageDialog(widget,
+                      gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                      gtk.MESSAGE_QUESTION, gtk.BUTTONS_YES_NO,
+                      "HDA-Analyzer: Would you like to revert\n"
+                      "settings for all HDA codecs?")
+      response = dialog.run()
+      dialog.destroy()
+    
+      if response == gtk.RESPONSE_YES:
+        for card in CODEC_TREE:
+          for codec in CODEC_TREE[card]:
+            CODEC_TREE[card][codec].revert()
+        print "Settings for all codecs were reverted..."
 
 TRACKER = TrackWindows()
