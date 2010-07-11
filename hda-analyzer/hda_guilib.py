@@ -463,7 +463,7 @@ class NodeGui(gtk.ScrolledWindow):
       hbox1.pack_start(frame)
       frame = gtk.Frame('Digital Converter Category')
       entry = gtk.Entry()
-      entry.set_text("0x%x" % node.dig1_category)
+      self.dig_category_entry = entry
       entry.set_width_chars(4)
       entry.connect("activate", self.__dig1_category_activate, node)
       frame.add(entry)
@@ -526,6 +526,7 @@ class NodeGui(gtk.ScrolledWindow):
           checkbutton = self.digital_checkbuttons[idx]
           checkbutton.set_active(node.digi1 & (1 << DIG1_BITS[name]))
           idx += 1
+        self.dig_category_entry.set_text("0x%x" % node.dig1_category)
     elif node.wtype_id == 'PIN':
       if 'EAPD' in node.pincap:
         idx = 0

@@ -25,6 +25,11 @@ from hda_codec import EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
 
 GRAPH_WINDOWS = {}
 
+class DummyScrollEvent:
+
+  def __init__(self, dir):
+    self.direction = dir
+
 class Node:
 
   def __init__(self, codec, node, x, y, nodesize, extra):
@@ -442,12 +447,13 @@ class CodecGraphLayout(gtk.Layout):
     self.set_events(0)
     self.add_events(gtk.gdk.EXPOSURE_MASK | gtk.gdk.POINTER_MOTION_MASK |
                     gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK |
-                    gtk.gdk.LEAVE_NOTIFY_MASK)
+                    gtk.gdk.LEAVE_NOTIFY_MASK | gtk.gdk.SCROLL_MASK)
     self.expose_handler = self.connect("expose-event", self.expose)
     self.click_handler = self.connect("button-press-event", self.button_click)
     self.release_handler = self.connect("button-release-event", self.button_release)
     self.motion_handler = self.connect("motion-notify-event", self.mouse_move)
     self.mouse_leave_handler = self.connect("leave-notify-event", self.mouse_leave)
+    self.scroll_me_handler = self.connect("scroll-event", self.scroll_me)
 
     self.popup_win = None
     self.popup = None
@@ -764,6 +770,10 @@ class CodecGraphLayout(gtk.Layout):
     
   def button_click(self, widget, event):
     if event.button != 3:
+      if event.button == 8:
+        self.scroll_me(self, DummyScrollEvent(gtk.gdk.SCROLL_LEFT))
+      elif event.button == 9:
+        self.scroll_me(self, DummyScrollEvent(gtk.gdk.SCROLL_RIGHT))
       return False
     node, what = self.find_node(event)
     m = None
@@ -860,8 +870,21 @@ class CodecGraphLayout(gtk.Layout):
     return False 
     
   def button_release(self, widget, event):
-    
     pass
+
+  def scroll_me(self, widget, event):
+    if event.direction == gtk.gdk.SCROLL_UP:
+      adj = self.get_vadjustment()
+      adj.set_value(adj.get_value()-40)
+    elif event.direction == gtk.gdk.SCROLL_DOWN:
+      adj = self.get_vadjustment()
+      adj.set_value(adj.get_value()+40)
+    elif event.direction == gtk.gdk.SCROLL_LEFT:
+      adj = self.get_hadjustment()
+      adj.set_value(adj.get_value()-40)
+    elif event.direction == gtk.gdk.SCROLL_RIGHT:
+      adj = self.get_hadjustment()
+      adj.set_value(adj.get_value()+40)
 
 gobject.type_register(CodecGraphLayout)
 
