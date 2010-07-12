@@ -1355,6 +1355,8 @@ class HDACodec:
     return str
 
   def dump_node_extra(self, node):
+    if self.proc_codec:
+      return self.proc_codec.dump_node_extra(node)
     return ''
 
   def get_device(self, nid):
