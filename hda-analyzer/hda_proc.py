@@ -759,14 +759,20 @@ class HDACodecProc(HDACodec, HDABaseProc):
     raise ValueError, "unimplemented rw(0x%x, 0x%x, 0x%x)" % (nid, verb, param)
 
   def dump_node_extra(self, node):
+    if not node or not node.nid in self.proc_nids:
+      return ''
     node = self.proc_nids[node.nid]
     return node.dump_extra()
 
   def get_device(self, nid):
+    if not nid in self.proc_nids:
+      return None
     node = self.proc_nids[nid]
     return node.get_device()
 
   def get_controls(self, nid):
+    if not nid in self.proc_nids:
+      return None
     node = self.proc_nids[nid]
     return node.get_controls()
 
