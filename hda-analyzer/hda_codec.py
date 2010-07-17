@@ -757,6 +757,8 @@ class HDANode:
     return self.codec.get_controls(self.nid)
 
   def get_mixercontrols(self):
+    if not self.codec.mixer:
+      return []
     ctls = self.get_controls()
     res = []
     for ctl in ctls:
@@ -1469,7 +1471,7 @@ class HDACodec:
           return doplace(nid, 1, x+1)
         return False
       return None
-  
+
     error = 0
     res = []
     unplaced = []

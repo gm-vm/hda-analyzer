@@ -76,7 +76,6 @@ def read_nodes2(card, codec):
 def read_nodes3(card, codec, proc_file):
   c = HDACodecProc(card, codec, proc_file)
   c.analyze()
-  c.graph(dump=True)
   if not card in CODEC_TREE:
     CODEC_TREE[card] = {}
     DIFF_TREE[card] = {}

@@ -467,6 +467,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
     self.device = device
     self.mcard = HDACardProc(card)
     self.proc_codec_id = None
+    self.mixer = None
     self.parse(proc_file)
     if self.proc_codec_id:
       self.mcard.name = self.proc_codec_id
@@ -540,11 +541,14 @@ class HDACodecProc(HDACodec, HDABaseProc):
       return idx + 1
 
     self.proc_afg = -1
+    self.proc_mfg = -1
     self.proc_nids = {}
-    self.proc_function_id = 0
+    self.proc_afg_function_id = 0
+    self.proc_mfg_function_id = 0
     self.proc_vendor_id = 0
     self.proc_subsystem_id = 0
     self.proc_revision_id =0
+    function_id = 0
     lines = str.splitlines()
     idx = 0
     idx, self.proc_codec_id = lookfor(idx, 'Codec: ')
@@ -555,7 +559,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
     self.device = tmp # really?
     self.proc_function_id = None
     if lines[idx].startswith('Function Id: '):
-      idx, self.proc_function_id = lookforint(idx, 'Function Id: ')
+      idx, function_id = lookforint(idx, 'Function Id: ')
     idx, self.proc_vendor_id = lookforint(idx, 'Vendor Id: ')
     idx, self.proc_subsystem_id = lookforint(idx, 'Subsystem Id: ')
     idx, self.proc_revision_id = lookforint(idx, 'Revision Id:' )
@@ -564,17 +568,23 @@ class HDACodecProc(HDACodec, HDABaseProc):
     nomfg = lines[idx].strip() == 'No Modem Function Group found'
     if nomfg:
       self.proc_afg = 1
+      self.proc_afg_function_id = function_id
       idx += 1
     elif lines[idx].startswith('Default PCM:'):
       self.proc_afg = 1
+      self.proc_afg_function_id = function_id
     else:
-      if self.proc_function_id is None:
-        self.proc_function_id = 2
-      idx, self.proc_modem_grp = lookforint(idx, 'Modem Function Group: ')
-      self.proc_afg = -1
-      return
-    if self.proc_function_id is None:
-      self.proc_function_id = 1
+      idx, self.proc_mfg = lookforint(idx, 'Modem Function Group: ')
+      if not self.proc_mfg is None:
+        self.proc_mfg_function_id = function_id
+      else:
+        self.proc_mfg = -1
+      if lines[idx].startswith('Default PCM:'):
+        self.proc_afg = 1
+    if self.proc_afg >= 0 and self.proc_afg_function_id == 0:
+      self.proc_afg_function_id = 1
+    if self.proc_mfg >= 0 and self.proc_mfg_function_id == 0:
+      self.proc_mfg_function_id = 2
     if not lines[idx].startswith('Default PCM:'):
       self.wrongfile('default pcm expected')
     if lines[idx+1].strip() == "N/A":
@@ -706,7 +716,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
         return self.proc_revision_id
     elif nid == self.proc_afg:
       if param == PARAMS['FUNCTION_TYPE']:
-        return self.proc_function_id
+        return self.proc_afg_function_id
       elif param == PARAMS['PCM']:
         return self.proc_pcm_bits
       elif param == PARAMS['STREAM']:
@@ -717,6 +727,9 @@ class HDACodecProc(HDACodec, HDABaseProc):
         return self.proc_amp_caps_in
       elif param == PARAMS['GPIO_CAP']:
         return self.proc_gpio_cap
+    elif nid == self.proc_mfg:
+      if param == PARAMS['FUNCTION_TYPE']:
+        return self.proc_mfg_function_id
     else:
       if nid is None:
         return 0
@@ -726,7 +739,9 @@ class HDACodecProc(HDACodec, HDABaseProc):
 
   def get_sub_nodes(self, nid):
     if nid == AC_NODE_ROOT:
-      return self.proc_afg, 1
+      if self.proc_mfg >= 0:
+        return 2, self.proc_afg
+      return 1, self.proc_afg
     elif nid == self.proc_afg:
       if self.proc_nids:
         return len(self.proc_nids), self.proc_nids.keys()[0]
