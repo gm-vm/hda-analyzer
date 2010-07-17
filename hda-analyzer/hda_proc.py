@@ -166,6 +166,10 @@ class HDApcmControl:
       str += '    ControlAmp: chs=%s, dir=%s, idx=%s, ofs=%s\n' % (self.amp_chs, self.amp_dir, self.amp_idx, self.amp_ofs)
     return str
 
+  def amp_index_match(self, idx):
+    count = (self.amp_chs & 1) + ((self.amp_chs >> 1) & 1)
+    return idx >= self.amp_idx and idx < self.amp_idx + count
+
 class ProcNode(HDABaseProc):
 
   def __init__(self, codec, nid, wcaps):

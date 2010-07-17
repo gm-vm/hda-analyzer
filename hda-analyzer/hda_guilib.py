@@ -76,6 +76,8 @@ class NodeGui(gtk.ScrolledWindow):
     self.read_all = self.__read_all_none
     self.node = None
     self.codec = None
+    self.popups = []
+    self.tooltips = gtk.Tooltips()
     if card and not codec and not node:
       self.__build_card(card, doframe)
     elif codec and not card and not node:
@@ -104,6 +106,57 @@ class NodeGui(gtk.ScrolledWindow):
     if widget != self:
       if self.read_all and self.node == node:
         self.read_all()
+
+  def show_popup(self, text):
+    screen_width = gtk.gdk.screen_width()
+    screen_height = gtk.gdk.screen_height()
+
+    popup_win = gtk.Window(gtk.WINDOW_POPUP)
+    popup_win.modify_bg(gtk.STATE_NORMAL, gtk.gdk.Color(0xffff, 0xd700, 0))
+    frame = gtk.Frame()
+    popup_win.add(frame)
+    label = gtk.Label()
+    label.modify_font(get_fixed_font())
+    if text[-1] == '\n':
+      text = text[:-1]
+    label.set_text(text)
+    frame.add(label)
+    popup_win.move(screen_width + 10, screen_height + 10)
+    popup_win.show_all()
+    popup_width, popup_height = popup_win.get_size()
+
+    rootwin = self.get_screen().get_root_window()
+    x, y, mods = rootwin.get_pointer()
+
+    pos_x = x - popup_width/2
+    if pos_x < 0:
+      pos_x = 0
+    if pos_x + popup_width > screen_width:
+      pos_x = screen_width - popup_width
+    pos_y = y + 16
+    if pos_y < 0:
+      pox_y = 0
+    if pos_y + popup_height > screen_height:
+      pos_y = screen_height - popup_height
+
+    popup_win.move(int(pos_x), int(pos_y))
+    return popup_win
+
+  def __popup_motion_notify(self, widget, event=None):
+    for popup in self.popups:
+      if popup[1] == widget and not popup[0]:
+        popup[0] = self.show_popup(popup[2](*popup[3]))
+
+  def __popup_leave_notify(self, widget, event=None):
+    for popup in self.popups:
+      if popup[1] == widget and popup[0]:
+        popup[0].destroy()
+        popup[0] = None
+
+  def make_popup(self, widget, gettext, data):
+    widget.connect("motion-notify-event", self.__popup_motion_notify)
+    widget.connect("leave-notify-event", self.__popup_leave_notify)
+    self.popups.append([None, widget, gettext, data])
 
   def __create_text(self, callback):
     scrolled_window = gtk.ScrolledWindow()
@@ -214,8 +267,17 @@ class NodeGui(gtk.ScrolledWindow):
       HDA_SIGNAL.emit("hda-node-changed", self, vals.node)
     adj.set_value(vals.vals[idx] & 0x7f)
 
-  def __build_amps(self, node):
+  def __ctl_mute_toggled(self, adj, data):
+    ctl, idx = data
 
+  def __ctl_value_changed(self, adj, data):
+    ctl, idx = data
+
+  def __popup_show_ctl(self, ctl, idx):
+    return ctl.get_text_info(idx - ctl.hdactl.amp_idx)
+
+  def __build_amps(self, node):
+  
     def build_caps(title, caps, vals):
       if caps and caps.cloned:
         title += ' (Global)'
@@ -233,6 +295,8 @@ class NodeGui(gtk.ScrolledWindow):
         vbox1 = None
         self.amp_checkbuttons[caps.dir] = []
         self.amp_adjs[caps.dir] = []
+        self.mixer_elems[caps.dir] = []
+        ctls = node.get_mixercontrols()
         for val in vals.vals:
           if vals.stereo and idx & 1 == 0:
             frame1 = gtk.Frame()
@@ -259,6 +323,31 @@ class NodeGui(gtk.ScrolledWindow):
             hbox.pack_start(scale, True, True)
           else:
             self.amp_adjs[caps.dir].append(None)
+          sep = False
+          for ctl in ctls:
+            if ctl.hdactl.amp_index_match(idx):
+              if ctl.stype == 'boolean':
+                if not sep:
+                  hbox.pack_start(gtk.VSeparator(), False, False)
+                  hbox.pack_start(gtk.Label('CTLIFC'), False, False)
+                  sep = True
+                checkbutton = gtk.CheckButton('Mute')
+                checkbutton.connect("toggled", self.__ctl_mute_toggled, (ctl, idx))
+                self.make_popup(checkbutton, self.__popup_show_ctl, (ctl, idx))
+                hbox.pack_start(checkbutton, False, False)
+          for ctl in ctls:
+            if ctl.hdactl.amp_index_match(idx):
+              if ctl.stype.startswith('integer'):
+                if not sep:
+                  hbox.pack_start(gtk.VSeparator(), False, False)
+                  sep = True
+                adj = gtk.Adjustment(0, ctl.min, ctl.max, ctl.step, ctl.step, ctl.step)
+                scale = gtk.HScale(adj)
+                scale.set_digits(0)
+                scale.set_value_pos(gtk.POS_RIGHT)
+                adj.connect("value_changed", self.__ctl_value_changed, (ctl, idx))
+                self.make_popup(scale, self.__popup_show_ctl, (ctl, idx))
+                hbox.pack_start(scale, True, True)
           if vbox1:
             vbox1.pack_start(hbox, False, False)
           else:
@@ -269,6 +358,7 @@ class NodeGui(gtk.ScrolledWindow):
 
     self.amp_checkbuttons = {}
     self.amp_adjs = {}
+    self.mixer_elems = {}
     hbox = gtk.HBox(False, 0)
     c = build_caps('Input Amplifier',
                     node.in_amp and node.amp_caps_in or None,

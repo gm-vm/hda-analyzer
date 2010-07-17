@@ -2,7 +2,7 @@
 
 URL="http://git.alsa-project.org/?p=alsa.git;a=blob_plain;f=hda-analyzer/"
 FILES=["hda_analyzer.py", "hda_guilib.py", "hda_codec.py", "hda_proc.py",
-       "hda_graph.py"]
+       "hda_graph.py", "hda_mixer.py"]
 
 try:
   import gobject

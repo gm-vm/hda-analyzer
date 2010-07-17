@@ -15,6 +15,7 @@
 import os
 import struct
 from fcntl import ioctl
+from hda_mixer import AlsaMixer, AlsaMixerElem, AlsaMixerElemId
 
 def __ioctl_val(val):
   # workaround for OverFlow bug in python 2.4
@@ -274,7 +275,7 @@ class HDAAmpCaps:
       return -999999
     range = (self.stepsize + 1) * 25
     off = -self.ofs * range
-    if val >= self.nsteps:
+    if val > self.nsteps:
       db = off + self.nsteps * range
       if val != 0 or self.nsteps != 0:
         print "val > nsteps? for nid 0x%02x" % self.nid, val, self.nsteps
@@ -755,6 +756,16 @@ class HDANode:
   def get_controls(self):
     return self.codec.get_controls(self.nid)
 
+  def get_mixercontrols(self):
+    ctls = self.get_controls()
+    res = []
+    for ctl in ctls:
+      id = AlsaMixerElemId(name=ctl.name, index=ctl.index, device=ctl.device)
+      e = AlsaMixerElem(self.codec.mixer, id)
+      e.hdactl = ctl
+      res.append(e)
+    return res
+
   def get_conn_amp_vals_str(self, dst_node):
     # return amp values for connection between this and dst_node
     res = []
@@ -851,8 +862,10 @@ class HDACard:
 
   def __init__(self, card, ctl_fd=None):
     self.card = card
-    if not ctl_fd:
-      ctl_fd = os.open("/dev/snd/controlC%i" % card, os.O_RDONLY)
+    if ctl_fd is None:
+      self.fd = ctl_fd = os.open("/dev/snd/controlC%i" % card, os.O_RDONLY)
+    else:
+      self.fd = os.dup(ctl_fd)
     info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, '', '', '', '', '', '', '')
     res = ioctl(ctl_fd, CTL_IOCTL_CARD_INFO, info)
     a = struct.unpack('ii16s16s32s80s16s80s128s', res)
@@ -861,6 +874,10 @@ class HDACard:
     self.name = a[4].replace('\x00', '')
     self.longname = a[5].replace('\x00', '')
     self.components = a[8].replace('\x00', '')
+
+  def __del__(self):
+    if not self.fd is None:
+      os.close(self.fd)
 
 class HDACodec:
 
@@ -873,10 +890,12 @@ class HDACodec:
   def __init__(self, card=0, device=0, clonefd=None):
     self.fd = None
     self.hwaccess = True
+    ctl_fd = None
     if type(1) == type(card):
       self.device = device
       self.card = card
       self.mcard = HDACard(card)
+      ctl_fd = self.mcard.fd
     else:
       self.device = device
       self.mcard = card
@@ -894,6 +913,7 @@ class HDACodec:
     self.version = struct.unpack('I', res)
     if self.version < 0x00010000:	# 1.0.0
       raise IOError, "unknown HDA hwdep version"
+    self.mixer = AlsaMixer(self.card, ctl_fd=ctl_fd)
     self.parse_proc()
 
   def __del__(self):
@@ -1600,6 +1620,7 @@ def HDA_card_list():
       components = a[8].replace('\x00', '')
       if components.find('HDA:') >= 0:
         result.append(HDACard(card, ctl_fd=fd))
+      os.close(fd)
   return result
 
 if __name__ == '__main__':
