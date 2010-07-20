@@ -493,6 +493,16 @@ class HDACodecProc(HDACodec, HDABaseProc):
       str, res = self.decodeintw(lines[idx], prefix)
       return idx+1, res
 
+    def decodefcnid(idx, prefix):
+      if lines[idx].startswith(prefix):
+        str, res = self.decodeintw(lines[idx][len(prefix):])
+        if str.startswith('(unsol '):
+          str, res1 = self.decodeintw(str[:-1], '(unsol ')
+        else:
+          res1 = 0
+        return idx + 1, ((res1 & 1) << 8) | (res & 0xff)
+      return idx, 0        
+
     def decodeampcap(idx, prefix):
       if lines[idx].startswith(prefix):
         res = lines[idx][len(prefix):].strip()
@@ -557,9 +567,9 @@ class HDACodecProc(HDACodec, HDABaseProc):
       return
     idx, tmp = lookforint(idx, 'Address: ')
     self.device = tmp # really?
-    self.proc_function_id = None
-    if lines[idx].startswith('Function Id: '):
-      idx, function_id = lookforint(idx, 'Function Id: ')
+    idx, function_id = decodefcnid(idx, 'Function Id: ')
+    idx, self.proc_afg_function_id = decodefcnid(idx, 'AFG Function Id: ')
+    idx, self.proc_mfg_function_id = decodefcnid(idx, 'MFG Function Id: ')
     idx, self.proc_vendor_id = lookforint(idx, 'Vendor Id: ')
     idx, self.proc_subsystem_id = lookforint(idx, 'Subsystem Id: ')
     idx, self.proc_revision_id = lookforint(idx, 'Revision Id:' )
@@ -568,15 +578,18 @@ class HDACodecProc(HDACodec, HDABaseProc):
     nomfg = lines[idx].strip() == 'No Modem Function Group found'
     if nomfg:
       self.proc_afg = 1
-      self.proc_afg_function_id = function_id
+      if self.proc_afg_function_id == 0:
+        self.proc_afg_function_id = function_id
       idx += 1
     elif lines[idx].startswith('Default PCM:'):
       self.proc_afg = 1
-      self.proc_afg_function_id = function_id
+      if self.proc_afg_function_id == 0:
+        self.proc_afg_function_id = function_id
     else:
       idx, self.proc_mfg = lookforint(idx, 'Modem Function Group: ')
       if not self.proc_mfg is None:
-        self.proc_mfg_function_id = function_id
+        if self.proc_mfg_function_id == 0:
+          self.proc_mfg_function_id = function_id
       else:
         self.proc_mfg = -1
       if lines[idx].startswith('Default PCM:'):

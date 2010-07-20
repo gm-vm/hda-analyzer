@@ -1008,7 +1008,10 @@ class HDACodec:
     self.mfg = None
     self.nodes = {}
     self.gpio = None
-    self.function_id = 0			# invalid
+    self.afg_function_id = 0			# invalid
+    self.mfg_function_id = 0			# invalid
+    self.afg_unsol = 0
+    self.mfg_unsol = 0
     self.vendor_id = self.param_read(AC_NODE_ROOT, PARAMS['VENDOR_ID'])
     self.subsystem_id = self.param_read(AC_NODE_ROOT, PARAMS['SUBSYSTEM_ID'])
     self.revision_id = self.param_read(AC_NODE_ROOT, PARAMS['REV_ID'])
@@ -1026,11 +1029,13 @@ class HDACodec:
 
     total, nid = self.get_sub_nodes(AC_NODE_ROOT)
     for i in range(total):
-      self.function_id = func = self.param_read(nid, PARAMS['FUNCTION_TYPE'])
+      func = self.param_read(nid, PARAMS['FUNCTION_TYPE'])
       if (func & 0xff) == 0x01:		# audio group
+        self.afg_function_id = func & 0xff
         self.afg_unsol = (func & 0x100) and True or False
         self.afg = nid
       elif (func & 0xff) == 0x02:	# modem group
+        self.mfg_function_id = func & 0xff
         self.mfg_unsol = (func & 0x100) and True or False
         self.mfg = nid
       else:
@@ -1152,7 +1157,10 @@ class HDACodec:
       self.analyze()
     str = 'Codec: %s\n' % self.name
     str += 'Address: %i\n' % self.device
-    str += 'Function Id: 0x%x\n' % self.function_id
+    if not self.afg is None:
+      str += 'AFG Function Id: 0x%x (unsol %u)\n' % (self.afg_function_id, self.afg_unsol)
+    if not self.mfg is None:
+      str += 'MFG Function Id: 0x%x (unsol %u)\n' % (self.mfg_function_id, self.mfg_unsol)
     str += 'Vendor Id: 0x%x\n' % self.vendor_id
     str += 'Subsystem Id: 0x%x\n' % self.subsystem_id
     str += 'Revision Id: 0x%x\n' % self.revision_id

@@ -701,7 +701,11 @@ class NodeGui(gtk.ScrolledWindow):
     frame = gtk.Frame('Codec Identification')
     frame.set_border_width(4)
     str = 'Audio Fcn Group: %s\n' % (codec.afg and "0x%02x" % codec.afg or "N/A")
+    if codec.afg:
+      str += 'AFG Function Id: 0x%02x (unsol %u)\n' % (codec.afg_function_id, codec.afg_unsol)
     str += 'Modem Fcn Group: %s\n' % (codec.mfg and "0x%02x" % codec.mfg or "N/A")
+    if codec.mfg:
+      str += 'MFG Function Id: 0x%02x (unsol %u)\n' % (codec.mfg_function_id, codec.mfg_unsol)
     str += 'Vendor ID:\t 0x%08x\n' % codec.vendor_id
     str += 'Subsystem ID:\t 0x%08x\n' % codec.subsystem_id
     str += 'Revision ID:\t 0x%08x\n' % codec.revision_id
