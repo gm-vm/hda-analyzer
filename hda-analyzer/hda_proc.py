@@ -592,12 +592,14 @@ class HDACodecProc(HDACodec, HDABaseProc):
           self.proc_mfg_function_id = function_id
       else:
         self.proc_mfg = -1
-      if lines[idx].startswith('Default PCM:'):
+      if idx < len(lines) and lines[idx].startswith('Default PCM:'):
         self.proc_afg = 1
     if self.proc_afg >= 0 and self.proc_afg_function_id == 0:
       self.proc_afg_function_id = 1
     if self.proc_mfg >= 0 and self.proc_mfg_function_id == 0:
       self.proc_mfg_function_id = 2
+    if idx >= len(lines):
+      return			# probably only modem codec
     if not lines[idx].startswith('Default PCM:'):
       self.wrongfile('default pcm expected')
     if lines[idx+1].strip() == "N/A":
@@ -752,8 +754,10 @@ class HDACodecProc(HDACodec, HDABaseProc):
 
   def get_sub_nodes(self, nid):
     if nid == AC_NODE_ROOT:
-      if self.proc_mfg >= 0:
+      if self.proc_mfg >= 0 and self.proc_afg >= 0:
         return 2, self.proc_afg
+      if self.proc_mfg >= 0:
+        return 1, self.proc_mfg
       return 1, self.proc_afg
     elif nid == self.proc_afg:
       if self.proc_nids:
