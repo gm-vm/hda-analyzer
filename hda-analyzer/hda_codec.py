@@ -263,7 +263,7 @@ class HDAAmpCaps:
 
   def clone(self, ampcaps):
     ampcaps.ofs = self.ofs
-    ampcaps.nsteps = self.steps
+    ampcaps.nsteps = self.nsteps
     ampcaps.stepsize = self.stepsize
     ampcaps.mute = self.mute
     ampcaps.cloned = True
