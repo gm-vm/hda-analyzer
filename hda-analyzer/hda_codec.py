@@ -373,6 +373,8 @@ class HDAAmpVal:
 
   def get_val_db(self, idx):
     vals = self.get_val(idx)
+    if type(vals) != type([]):
+      vals = [vals]
     res = []
     for val in vals:
       res.append(self.caps.get_val_db(val))
