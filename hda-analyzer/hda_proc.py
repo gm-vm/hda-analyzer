@@ -167,8 +167,11 @@ class HDApcmControl:
     return str
 
   def amp_index_match(self, idx):
-    count = (self.amp_chs & 1) + ((self.amp_chs >> 1) & 1)
-    return idx >= self.amp_idx and idx < self.amp_idx + count
+    if not self.amp_chs is None:
+      count = (self.amp_chs & 1) + ((self.amp_chs >> 1) & 1)
+      return idx >= self.amp_idx and idx < self.amp_idx + count
+    else:
+      return False
 
 class ProcNode(HDABaseProc):
 
