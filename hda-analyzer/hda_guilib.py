@@ -309,6 +309,7 @@ class NodeGui(gtk.ScrolledWindow):
           if caps.mute:
             checkbutton = gtk.CheckButton('Mute')
             checkbutton.connect("toggled", self.__amp_mute_toggled, (caps, vals, idx))
+	    #checkbutton.set_active(True)
             self.amp_checkbuttons[caps.dir].append(checkbutton)
             hbox.pack_start(checkbutton, False, False)
           else:
@@ -635,21 +636,21 @@ class NodeGui(gtk.ScrolledWindow):
         if name: idx += 1
       if node.pincap_vref:
         self.pincap_vref_combobox.set_active(active)
-      a = []
-      if node.in_amp:
-        a.append((HDA_INPUT, node.amp_caps_in, node.amp_vals_in))
-      if node.out_amp:
-        a.append((HDA_OUTPUT, node.amp_caps_out, node.amp_vals_out))
-      for dir, caps, vals in a:
-        for idx in range(len(vals.vals)):
-          val = vals.vals[idx]
-          checkbutton = self.amp_checkbuttons[dir][idx]
-          if checkbutton:
-            checkbutton.set_active(val & 0x80 and True or False)
-          adj = self.amp_adjs[dir][idx]
-          if adj:
-            adj.set_value((val & 0x7f) % (caps.nsteps+1))
-          idx += 1
+    a = []
+    if node.in_amp:
+      a.append((HDA_INPUT, node.amp_caps_in, node.amp_vals_in))
+    if node.out_amp:
+      a.append((HDA_OUTPUT, node.amp_caps_out, node.amp_vals_out))
+    for dir, caps, vals in a:
+      for idx in range(len(vals.vals)):
+	val = vals.vals[idx]
+	checkbutton = self.amp_checkbuttons[dir][idx]
+	if checkbutton:
+	  checkbutton.set_active(val & 0x80 and True or False)
+	adj = self.amp_adjs[dir][idx]
+	if adj:
+	  adj.set_value((val & 0x7f) % (caps.nsteps+1))
+	idx += 1
     if hasattr(self, 'connection_model'):
       for r in self.connection_model:
         r[0] = False
