@@ -366,6 +366,15 @@ class HDAAmpVal:
     for idx in range(len(self.vals)):
       self.__write_val(idx)
 
+  def export(self):
+    vals = self.vals[:]
+    self.codec.export_start(True)
+    self.revert()
+    self.codec.export_end()
+    self.vals = vals
+    for idx in range(len(self.vals)):
+      self.__write_val(idx)    
+
   def get_val(self, idx):
     if self.stereo:
       return [self.vals[idx*2], self.vals[idx*2+1]]
@@ -446,6 +455,9 @@ class HDANode:
     self.origin_pinctls = None
     self.origin_vol_knb = None
     self.origin_sdi_select = None
+
+    self.disable_reread = False
+
     self.reread()
     
   def wtype_name(self):
@@ -468,8 +480,24 @@ class HDANode:
     if self.active_connection != None:
       changed = self.active_connection != val 
       self.codec.rw(self.nid, VERBS['SET_CONNECT_SEL'], val)
-      self.active_connection = self.codec.rw(self.nid, VERBS['GET_CONNECT_SEL'], 0)
+      if not self.disable_reread:
+        self.active_connection = self.codec.rw(self.nid, VERBS['GET_CONNECT_SEL'], 0)
+      else:
+        self.active_connection = val
     return changed
+
+  def reread_pwr(self, value=None):
+      if value is None:
+        pwr = self.codec.rw(self.nid, VERBS['GET_POWER_STATE'], 0)
+      else:
+        pwr = value
+      self.pwr = pwr
+      if self.origin_pwr is None:
+        self.origin_pwr = pwr
+      self.pwr_setting = pwr & 0x0f
+      self.pwr_actual = (pwr >> 4) & 0x0f
+      self.pwr_setting_name = self.pwr_setting < 4 and POWER_STATES[self.pwr_setting] or "UNKNOWN"
+      self.pwr_actual_name = self.pwr_actual < 4 and POWER_STATES[self.pwr_actual] or "UNKNOWN"
     
   def reread(self):
   
@@ -590,28 +618,24 @@ class HDANode:
       for a in range(len(POWER_STATES)):
         if pwr & (1 << a):
           self.pwr_states.append(POWER_STATES[a])
-      pwr = self.codec.rw(self.nid, VERBS['GET_POWER_STATE'], 0)
-      self.pwr = pwr
-      if self.origin_pwr == None:
-        self.origin_pwr = pwr
-      self.pwr_setting = pwr & 0x0f
-      self.pwr_actual = (pwr >> 4) & 0x0f
-      self.pwr_setting_name = self.pwr_setting < 4 and POWER_STATES[self.pwr_setting] or "UNKNOWN"
-      self.pwr_actual_name = self.pwr_actual < 4 and POWER_STATES[self.pwr_actual] or "UNKNOWN"
+      self.reread_pwr()
     # NID 0x20 == Realtek Define Registers
     if self.codec.vendor_id == 0x10ec and self.nid == 0x20:
       self.realtek_coeff_proc = self.codec.rw(self.nid, VERBS['GET_PROC_COEF'], 0)
       self.realtek_coeff_index = self.codec.rw(self.nid, VERBS['GET_COEF_INDEX'], 0)
 
-  def reread_eapdbtl(self):
+  def reread_eapdbtl(self, value=None):
     self.pincap_eapdbtl = []
     self.pincap_eapdbtls = 0
     if not 'EAPD' in self.pincap:
       return
-    val = self.codec.rw(self.nid, VERBS['GET_EAPD_BTLENABLE'], 0)
+    if value is None:
+      val = self.codec.rw(self.nid, VERBS['GET_EAPD_BTLENABLE'], 0)
+    else:
+      val = value
     self.pincap_eapdbtls = val
-    if self.origin_pincap_eapdbtls == None:
-     self.origin_pincap_eapdbtls = val
+    if self.origin_pincap_eapdbtls is None:
+      self.origin_pincap_eapdbtls = val
     for name in EAPDBTL_BITS:
       bit = EAPDBTL_BITS[name]
       if val & (1 << bit): self.pincap_eapdbtl.append(name)
@@ -628,10 +652,13 @@ class HDANode:
     self.reread_eapdbtl()
     return changed
 
-  def reread_pin_widget_control(self):
-    pinctls = self.codec.rw(self.nid, VERBS['GET_PIN_WIDGET_CONTROL'], 0)
+  def reread_pin_widget_control(self, value=None):
+    if value is None:
+      pinctls = self.codec.rw(self.nid, VERBS['GET_PIN_WIDGET_CONTROL'], 0)
+    else:
+      pinctls = value
     self.pinctls = pinctls
-    if self.origin_pinctls == None:
+    if self.origin_pinctls is None:
       self.origin_pinctls = pinctls
     self.pinctl = []
     for name in PIN_WIDGET_CONTROL_BITS:
@@ -659,10 +686,13 @@ class HDANode:
     self.reread_pin_widget_control()
     return changed
 
-  def reread_vol_knb(self):
-    cap = self.codec.rw(self.nid, VERBS['GET_VOLUME_KNOB_CONTROL'], 0)
+  def reread_vol_knb(self, value=None):
+    if value is None:
+      cap = self.codec.rw(self.nid, VERBS['GET_VOLUME_KNOB_CONTROL'], 0)
+    else:
+      cap = value
     self.vol_knb = cap
-    if self.origin_vol_knb == None:
+    if self.origin_vol_knb is None:
       self.origin_vol_knb = cap
     self.vol_knb_direct = (cap >> 7) & 1
     self.vol_knb_val = cap & 0x7f
@@ -683,12 +713,15 @@ class HDANode:
     self.reread_vol_knb()
     return changed
 
-  def reread_sdi_select(self):
+  def reread_sdi_select(self, value=None):
     self.sdi_select = None
     if self.wtype_id == 'AUD_IN' and self.aud_channel == 0:
-      sdi = self.codec.rw(self.nid, VERBS['GET_SDI_SELECT'], 0)
+      if value is None:
+        sdi = self.codec.rw(self.nid, VERBS['GET_SDI_SELECT'], 0)
+      else:
+        sdi = value
       self.sdi_select = sdi & 0x0f
-      if self.origin_sdi_select == None:
+      if self.origin_sdi_select is None:
         self.origin_sdi_select = sdi
 
   def sdi_select_set_value(self, value):
@@ -700,14 +733,17 @@ class HDANode:
       self.reread_sdi_select()
     return changed
 
-  def reread_dig1(self):
+  def reread_dig1(self, value=None):
     self.dig1 = []
     self.dig1_category = None
     if not self.digital:
       return
-    digi1 = self.codec.rw(self.nid, VERBS['GET_DIGI_CONVERT_1'], 0)
+    if value is None:
+      digi1 = self.codec.rw(self.nid, VERBS['GET_DIGI_CONVERT_1'], 0)
+    else:
+      digi1 = value
     self.digi1 = digi1
-    if self.origin_digi1 == None:
+    if self.origin_digi1 is None:
       self.origin_digi1 = digi1
     for name in DIG1_BITS:
       bit = DIG1_BITS[name]
@@ -732,25 +768,78 @@ class HDANode:
     self.reread_dig1()
     return changed
 
-  def revert(self):
-    if self.origin_active_connection != None:
+  def revert(self, export=False):
+    if not self.origin_active_connection is None:
       self.set_active_connection(self.origin_active_connection)
-    if self.origin_pwr != None:
+    if not self.origin_pwr is None:
       self.codec.rw(self.nid, VERBS['SET_POWER_STATE'], self.origin_pwr)
-    if self.in_amp:
-      self.amp_vals_in.revert()
-    if self.out_amp:
-      self.amp_vals_out.revert()
-    if self.origin_pincap_eapdbtls != None:
+      self.reread_pwr(self.origin_pwr)
+    if not self.origin_pinctls is None:
+      self.codec.rw(self.nid, VERBS['SET_PIN_WIDGET_CONTROL'], self.origin_pinctls)
+      self.reread_pin_widget_control(self.origin_pinctls)
+    if not export:
+      if self.in_amp:
+        self.amp_vals_in.revert()
+      if self.out_amp:
+        self.amp_vals_out.revert()
+    if not self.origin_pincap_eapdbtls is None:
       self.codec.rw(self.nid, VERBS['SET_EAPD_BTLENABLE'], self.origin_pincap_eapdbtls)
-    if self.origin_vol_knb != None:
+      self.reread_eapdbtl(self.origin_pincap_eapdbtls)
+    if not self.origin_vol_knb is None:
       self.codec.rw(self.nid, VERBS['SET_VOLUME_KNOB_CONTROL'], self.origin_vol_knb)
-    if self.origin_sdi_select != None:
+      self.set_vol_knb(self.origin_vol_knb)
+    if not self.origin_sdi_select is None:
       self.codec.rw(self.nid, VERBS['SET_SDI_SELECT'], self.origin_sdi_select)
-    if self.origin_digi1 != None:
+      self.reread_sdi_select(self.origin_sdi_select)
+    if not self.origin_digi1 is None:
       self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_1'], self.origin_digi1 & 0xff)
       self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_2'], (self.origin_digi1 >> 8) & 0xff)
-    self.reread()
+      self.reread_dig1(self.origin_digi1)
+
+  def export(self):
+    
+    def getit(cur, orig):
+      if orig is None:
+        return None
+      return getattr(self, cur)
+  
+    self.disable_reread = True
+    active_connection = getit('active_connection', self.origin_active_connection)
+    pwr = getit('pwr', self.origin_pwr)
+    pinctls = getit('pinctls', self.origin_pinctls)
+    pincap_eapdbtls = getit('pincap_eapdbtls', self.origin_pincap_eapdbtls)
+    vol_knb = getit('vol_knb', self.origin_vol_knb)
+    sdi_select = getit('sdi_select', self.origin_sdi_select)
+    digi1 = getit('digi1', self.origin_digi1)
+    self.codec.export_start(True)
+    self.revert(export=True)
+    self.codec.export_end()
+    if not self.origin_active_connection is None:
+      self.set_active_connection(active_connection)
+    if not self.origin_pwr is None:
+      self.codec.rw(self.nid, VERBS['SET_POWER_STATE'], pwr)
+      self.reread_pwr(pwr)
+    if not self.origin_pinctls is None:
+      self.codec.rw(self.nid, VERBS['SET_PIN_WIDGET_CONTROL'], pinctls)
+      self.reread_pin_widget_control(pinctls)
+    if self.in_amp:
+      self.amp_vals_in.export()
+    if self.out_amp:
+      self.amp_vals_out.export()
+    if not self.origin_pincap_eapdbtls is None:
+      self.codec.rw(self.nid, VERBS['SET_EAPD_BTLENABLE'], pincap_eapdbtls)
+      self.reread_eapdbtl(pincap_eapdbtls)
+    if not self.origin_vol_knb is None:
+      self.codec.rw(self.nid, VERBS['SET_VOLUME_KNOB_CONTROL'], vol_knb)
+      self.set_vol_knb(vol_knb)
+    if not self.origin_sdi_select is None:
+      self.codec.rw(self.nid, VERBS['SET_SDI_SELECT'], sdi_select)
+      self.reread_sdi_select(sdi_select)
+    if not self.origin_digi1 is None:
+      self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_1'], digi1 & 0xff)
+      self.codec.rw(self.nid, VERBS['SET_DIGI_CONVERT_2'], (digi1 >> 8) & 0xff)
+      self.reread_dig1(digi1)    
+    self.disable_reread = False
 
   def get_device(self):
     return self.codec.get_device(self.nid)
@@ -827,6 +916,7 @@ class HDAGPIO:
     self.codec = codec
     self.nid = nid
     self.originval = None
+    self.disable_reread = False
     self.reread()
 
   def reread(self):
@@ -844,7 +934,8 @@ class HDAGPIO:
 
   def write(self, name):
     self.codec.rw(self.nid, GPIO_IDS[name][1], self.val[name])
-    self.read(name)
+    if not self.disable_reread:
+      self.read(name)
 
   def set(self, name, bit, val):
     old = self.test(name, bit)
@@ -862,6 +953,17 @@ class HDAGPIO:
       self.val[i] = self.originval[i]
       self.write(i)
 
+  def export(self):
+    self.disable_reread = True
+    vals = self.val.copy()
+    self.codec.export_start(True)
+    self.revert()
+    self.codec.export_end()
+    self.val = vals
+    for i in GPIO_IDS:
+      self.write(i)
+    self.disable_reread = False
+  
 class HDACard:
 
   def __init__(self, card, ctl_fd=None):
@@ -895,6 +997,8 @@ class HDACodec:
     self.fd = None
     self.hwaccess = True
     ctl_fd = None
+    self.exporter = None
+    self.exporta = []
     if type(1) == type(card):
       self.device = device
       self.card = card
@@ -926,9 +1030,12 @@ class HDACodec:
 
   def rw(self, nid, verb, param):
     """do elementary read/write operation"""
-    verb = (nid << 24) | (verb << 8) | param
-    res = ioctl(self.fd, IOCTL_VERB_WRITE, struct.pack('II', verb, 0))
-    return struct.unpack('II', res)[1]
+    if not self.exporter:
+      verb = (nid << 24) | (verb << 8) | param
+      res = ioctl(self.fd, IOCTL_VERB_WRITE, struct.pack('II', verb, 0))
+      return struct.unpack('II', res)[1]
+    else:
+      return self.exporter.rw(self.exporta and self.exporta[-1] or False, nid, verb, param)
     
   def get_wcap(self, nid):
     """get cached widget capabilities"""
@@ -989,6 +1096,20 @@ class HDACodec:
       self.gpio.revert()
     for nid in self.nodes:
       self.nodes[nid].revert()
+
+  def export_start(self, mode):
+    self.exporta.append(mode)
+
+  def export_end(self):
+    self.exporta.pop()
+
+  def export(self, exporter):
+    self.exporter = exporter
+    if not self.gpio is None:
+      self.gpio.export()
+    for nid in self.nodes:
+      self.nodes[nid].export()
+    self.exporter = None
 
   def get_node(self, nid):
     if nid == self.afg:
@@ -1615,6 +1736,90 @@ class HDACodec:
         print str
       print "****"
     return res
+
+class HDA_Exporter_pyscript:
+
+  def __init__(self):
+    self.old_verbs = {}
+    self.new_verbs = {}
+
+  def title(self):
+    return 'Export to Python Script'
+
+  def stitle(self):
+    return "pyscript"
+    
+  def rw(self, old, nid, verb, param):
+    if verb & 0x0800:
+      raise ValueError, "read: nid=0x%x, verb=0x%x, param=0x%x" % (nid, verb, param)
+    #print "old = 0x%x, nid = 0x%x, verb = 0x%x, param = 0x%x" % (old, nid, verb, param)
+    verb |= param >> 8
+    if old:
+      if not nid in self.old_verbs:
+        self.old_verbs[nid] = {}
+      self.old_verbs[nid][verb] = param
+    else:
+      if not nid in self.new_verbs:
+        self.new_verbs[nid] = {}
+      self.new_verbs[nid][verb] = param
+
+  def text(self, codec):
+    text = ''
+    nids = self.new_verbs.keys()[:]
+    for nid in nids:
+      for verb in self.new_verbs[nid]:
+        old = self.old_verbs[nid][verb]
+        new = self.new_verbs[nid][verb]
+        if old != new:
+          verb1 = verb & ~(new >> 8)
+          pack = (nid << 24) | (verb << 8) | new
+          for k, v in VERBS.items():
+            if v == verb1:
+              txt = k
+              break
+          s1 = new < 256 and ("  0x%02x" % new) or ("0x%04x" % new)
+          text += "set(0x%02x, 0x%03x, %s) # 0x%08x (%s)\n" % (nid, verb1, s1, pack, txt)
+    if not text:
+      text = '# no change'
+    else:
+      text = """\
+#!/usr/bin/env python
+
+import os
+import struct
+from fcntl import ioctl
+
+def __ioctl_val(val):
+  # workaround for OverFlow bug in python 2.4
+  if val & 0x80000000:
+    return -((val^0xffffffff)+1)
+  return val
+
+IOCTL_INFO = __ioctl_val(0x80dc4801)
+IOCTL_PVERSION = __ioctl_val(0x80044810)
+IOCTL_VERB_WRITE = __ioctl_val(0xc0084811)
+
+def set(nid, verb, param):
+  verb = (nid << 24) | (verb << 8) | param
+  res = ioctl(FD, IOCTL_VERB_WRITE, struct.pack('II', verb, 0))  
+
+FD = os.open("%s", os.O_RDONLY)
+info = struct.pack('Ii64s80si64s', 0, 0, '', '', 0, '')
+res = ioctl(FD, IOCTL_INFO, info)
+name = struct.unpack('Ii64s80si64s', res)[3]
+if not name.startswith('HDA Codec'):
+  raise IOError, "unknown HDA hwdep interface"
+res = ioctl(FD, IOCTL_PVERSION, struct.pack('I', 0))
+version = struct.unpack('I', res)
+if version < 0x00010000:	# 1.0.0
+  raise IOError, "unknown HDA hwdep version"
+
+# initialization sequence starts here...
+
+%s
+os.close(FD)
+""" % ("/dev/snd/hwC%sD%s" % (codec.card, codec.device), text)
+    return text
 
 def HDA_card_list():
   from dircache import listdir

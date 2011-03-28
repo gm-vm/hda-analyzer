@@ -33,7 +33,7 @@ import gobject
 import gtk
 import pango
 
-from hda_codec import HDACodec, HDA_card_list, \
+from hda_codec import HDACodec, HDA_card_list, HDA_Exporter_pyscript, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
                       PIN_WIDGET_CONTROL_VREF, DIG1_BITS, GPIO_IDS, \
                       HDA_INPUT, HDA_OUTPUT
@@ -121,6 +121,16 @@ def read_nodes(proc_files):
       cnt += 1
   return cnt    
 
+def save_to_file(filename, txt, mode=None):
+  try:
+    fp = open(filename, "w+")
+    fp.write(txt)
+    fp.close()
+    if mode:
+      os.chmod(filename, 0755)
+  except:
+    print "Unable to save text to '%s'" % filename
+
 (
     TITLE_COLUMN,
     CARD_COLUMN,
@@ -167,6 +177,10 @@ class HDAAnalyzer(gtk.Window):
     button = gtk.Button("Diff")
     button.connect("clicked", self.__diff_clicked)
     self.tooltips.set_tip(button, "Show settings diff for selected codec.")
+    hbox1.pack_start(button)
+    button = gtk.Button("Exp")
+    button.connect("clicked", self.__export_clicked)
+    self.tooltips.set_tip(button, "Export settings differences for selected codec.\nGenerates a python script.")
     hbox1.pack_start(button)
     button = gtk.Button("Graph")
     button.connect("clicked", self.__graph_clicked)
@@ -265,6 +279,55 @@ mailing list, too.
     dialog.show_all()
     dialog.run()
     dialog.destroy()
+    
+  def __export_clicked(self, button):
+    if not self.codec:
+      self.simple_dialog(gtk.MESSAGE_WARNING, "Please, select a codec in left codec/node tree.")
+      return
+    exporter = HDA_Exporter_pyscript()
+    self.codec.export(exporter)
+    dialog = gtk.Dialog(exporter.title(), self,
+                        gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
+                        (gtk.STOCK_OK, gtk.RESPONSE_OK,
+                         gtk.STOCK_SAVE_AS, gtk.RESPONSE_YES))
+    text_view = gtk.TextView()
+    text_view.set_border_width(4)
+    fontName = get_fixed_font()
+    text_view.modify_font(fontName)
+    str = exporter.text(self.codec)
+    buffer = gtk.TextBuffer(None)
+    iter = buffer.get_iter_at_offset(0)
+    buffer.insert(iter, str[:-1])
+    text_view.set_buffer(buffer)
+    text_view.set_editable(False)
+    text_view.set_cursor_visible(False)
+    dialog.vbox.pack_start(text_view, False, False)
+    dialog.show_all()
+    r = dialog.run()
+    dialog.destroy()
+    if r == gtk.RESPONSE_YES:
+      sdialog = gtk.FileChooserDialog('Save %s as...' % exporter.stitle(),
+                    self, gtk.FILE_CHOOSER_ACTION_SAVE,
+                     (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
+                      gtk.STOCK_SAVE, gtk.RESPONSE_OK))
+      sdialog.set_default_response(gtk.RESPONSE_OK)
+
+      filter = gtk.FileFilter()
+      filter.set_name("Python Scripts")
+      filter.add_mime_type("text/x-python")
+      filter.add_mime_type("text/x-python-script")
+      filter.add_pattern("*.py")
+      sdialog.add_filter(filter)
+
+      filter = gtk.FileFilter()
+      filter.set_name("All files")
+      filter.add_pattern("*")
+      sdialog.add_filter(filter)
+
+      sr = sdialog.run()
+      if sr == gtk.RESPONSE_OK:
+        save_to_file(sdialog.get_filename(), str, 0755)
+      sdialog.destroy()
     
   def __graph_clicked(self, button):
     if not self.codec:
