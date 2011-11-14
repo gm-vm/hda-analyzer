@@ -516,7 +516,7 @@ class HDANode:
     def get_jack_connector(cfg):
       names = ["Unknown", "1/8", "1/4", "ATAPI", "RCA", "Optical",
                "Digital", "Analog", "DIN", "XLR", "RJ11", "Comb",
-               None, None, None, "Oth[6~er"]
+               None, None, None, "Other"]
       cfg = (cfg >> 16) & 0x0f
       return names[cfg] and names[cfg] or "UNKNOWN"
       
