@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2008-2010 by Jaroslav Kysela <perex@perex.cz>
+# Copyright (c) 2008-2012 by Jaroslav Kysela <perex@perex.cz>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -248,7 +248,7 @@ class NodeGui(gtk.ScrolledWindow):
       column = gtk.TreeViewColumn("Active", renderer, active=0)
       treeview.append_column(column)
       renderer = gtk.CellRendererText()
-      column = gtk.TreeViewColumn("Source Node", renderer, text=1, editable=False)
+      column = gtk.TreeViewColumn("Source Node", renderer, text=1, editable=1)
       treeview.append_column(column)
       sw.add(treeview)
     return frame
@@ -584,7 +584,8 @@ class NodeGui(gtk.ScrolledWindow):
     for ctrl in ctrls:
       hbox1 = gtk.HBox(False, 0)
       vbox1.pack_start(hbox1, False, False)
-      s = 'name=' + str(ctrl.name) + ', index=' + str(ctrl.index) + \
+      s = (ctrl.iface and ('iface=' + ctrl.iface + ',') or '') + \
+          'name=' + str(ctrl.name) + ', index=' + str(ctrl.index) + \
           ', device=' + str(ctrl.device)
       label = gtk.Label(s)
       hbox1.pack_start(label, False, False)
@@ -674,6 +675,7 @@ class NodeGui(gtk.ScrolledWindow):
       vbox.pack_start(self.__build_device(dev), False, False)
     ctrls = node.get_controls()
     if ctrls:
+      node.get_mixercontrols()	# workaround
       vbox.pack_start(self.__build_controls(ctrls), False, False)
     hbox = gtk.HBox(False, 0)
     hbox.pack_start(self.__build_node_caps(node))

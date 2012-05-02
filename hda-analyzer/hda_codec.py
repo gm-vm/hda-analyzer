@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2008-2010 by Jaroslav Kysela <perex@perex.cz>
+# Copyright (c) 2008-2012 by Jaroslav Kysela <perex@perex.cz>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -853,8 +853,18 @@ class HDANode:
     ctls = self.get_controls()
     res = []
     for ctl in ctls:
-      id = AlsaMixerElemId(name=ctl.name, index=ctl.index, device=ctl.device)
-      e = AlsaMixerElem(self.codec.mixer, id)
+      for iface in (ctl.iface and [ctl.iface] or [None, 'card', 'pcm']):
+        try:
+          id = AlsaMixerElemId(iface=iface, name=ctl.name, index=ctl.index, device=ctl.device)
+          e = AlsaMixerElem(self.codec.mixer, id)
+          if iface and ctl.iface != iface:
+            ctl.iface = iface
+          break
+        except:
+          e = None
+      if not e:
+        print "Control ID not found:", ctl.dump_extra().strip().lstrip()
+        continue
       e.hdactl = ctl
       res.append(e)
     return res
@@ -905,8 +915,9 @@ class HDANode:
           res[idx] = vals[idx]
     if res[0] is None and res[1] is None:
       return True
+    limit = self.wtype_id == 'AUD_OUT' and -3200 or -1200
     for r in res:
-      if r >= -1200:
+      if r >= limit:
         return True
     return False
 

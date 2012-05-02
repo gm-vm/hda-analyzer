@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2008-2010 by Jaroslav Kysela <perex@perex.cz>
+# Copyright (c) 2008-2012 by Jaroslav Kysela <perex@perex.cz>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by

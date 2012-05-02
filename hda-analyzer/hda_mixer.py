@@ -46,9 +46,13 @@ CTL_ELEM_RTYPEs = {}
 for i in CTL_ELEM_TYPEs:
   CTL_ELEM_RTYPEs[CTL_ELEM_TYPEs[i]] = i
 
+CTL_ELEM_IFACE_CARD = 0
 CTL_ELEM_IFACE_MIXER = 2
+CTL_ELEM_IFACE_PCM = 3
 CTL_ELEM_IFACEs = {
+  "card": 0,
   "mixer": 2,
+  "pcm": 3
 }
 CTL_ELEM_RIFACEs = {}
 for i in CTL_ELEM_IFACEs:
@@ -92,7 +96,10 @@ class AlsaMixerElemId:
                name=None,
                index=0):
     self.numid = numid
-    self.iface = iface
+    if type(iface) == type(''):
+      self.iface = CTL_ELEM_IFACEs[iface]
+    else:
+      self.iface = iface is None and CTL_ELEM_IFACE_MIXER or iface
     self.device = device
     self.subdevice = subdevice
     self.name = name

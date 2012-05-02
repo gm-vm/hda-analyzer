@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2008-2010 by Jaroslav Kysela <perex@perex.cz>
+# Copyright (c) 2008-2012 by Jaroslav Kysela <perex@perex.cz>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -154,14 +154,15 @@ class HDApcmDevice:
 
 class HDApcmControl:
 
-  def __init__(self, name, index, device):
+  def __init__(self, iface, name, index, device):
+    self.iface = iface
     self.name = name
     self.index = index
     self.device = device
     self.amp_chs = None
 
   def dump_extra(self):
-    str = '  Control: name="%s", index=%s, device=%s\n' % (self.name, self.index, self.device)
+    str = '  Control: %sname="%s", index=%s, device=%s\n' % (self.iface and ("iface=\"%s\", " % self.iface) or "", self.name, self.index, self.device)
     if not self.amp_chs is None:
       str += '    ControlAmp: chs=%s, dir=%s, idx=%s, ofs=%s\n' % (self.amp_chs, self.amp_dir, self.amp_idx, self.amp_ofs)
     return str
@@ -312,10 +313,13 @@ class ProcNode(HDABaseProc):
     self.add_param(PARAMS['STREAM'], tmp1)
 
   def add_control(self, line):
+    iface = None
+    if line.find('iface=') > 0:
+      line, iface = self.decodestrw(line, 'iface=')
     line, name = self.decodestrw(line, 'name=')
     line, index = self.decodeintw(line, 'index=')
     line, device = self.decodeintw(line, 'device=')
-    self.controls.append(HDApcmControl(name, index, device))
+    self.controls.append(HDApcmControl(iface, name, index, device))
 
   def add_controlamp(self, line):
     ctl = self.controls[-1]
