@@ -2,6 +2,13 @@
 #
 # Depends on python-scipy and python-matplotlib
 #
+# This test analyzes the .wav file and uses FFT (Fast Fourier Transform)
+# to analyze the frequency range. Only left channel is analyzed. Samples
+# are normalized before FFT. Frequencies bellow 200Hz and above 6000Hz
+# are ommited. The utility compares the frequencies using 200Hz steps
+# with given or predefined FFT samples and the diff to the most-close FFT
+# sample is printed.
+#
 
 import sys
 import scipy
@@ -10,7 +17,7 @@ from numpy import average as npavg, max as npmax, abs as npabs, sum as npsum, fr
 from scipy.fftpack import fft, fftfreq
 from scipy.io import wavfile
 
-SAMPLES = {
+FFT_SAMPLES = {
   'zero': (
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -191,7 +198,7 @@ def read_wav(filename, channel=0):
   return samplerate, data
 
 def fft_test(args):
-  global SAMPLES
+  global FFT_SAMPLES
   graph = False
   values = False
   while 1:
@@ -205,9 +212,9 @@ def fft_test(args):
       continue
     if args[0] == '-clean':
       del args[0]
-      a = SAMPLES['zero']
-      SAMPLES = {}
-      SAMPLES['zero'] = a
+      a = FFT_SAMPLES['zero']
+      FFT_SAMPLES = {}
+      FFT_SAMPLES['zero'] = a
       continue
     if args[0].startswith('-avg='):
       avg = eval(args[0][5:])
@@ -220,8 +227,8 @@ def fft_test(args):
     if args[0].startswith('-name='):
       name = args[0][6:]
       del args[0]
-      SAMPLES[name] = (avg, mex)
-      print repr(SAMPLES[name])
+      FFT_SAMPLES[name] = (avg, mex)
+      print repr(FFT_SAMPLES[name])
     break
 
   filename = args[0]
@@ -277,8 +284,8 @@ def fft_test(args):
   else:
     m = map(lambda x: 0, l)
   check = {}
-  for s in SAMPLES:
-    x, y = SAMPLES[s]
+  for s in FFT_SAMPLES:
+    x, y = FFT_SAMPLES[s]
     diffa = diffm = idx = 0
     for idx in range(len(r)):
       diffa += abs(r[idx] - x[idx])
