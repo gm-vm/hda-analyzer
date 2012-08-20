@@ -3,11 +3,11 @@
 # Depends on python-scipy and python-matplotlib
 #
 # This test analyzes the .wav file and uses FFT (Fast Fourier Transform)
-# to analyze the frequency range. Only left channel is analyzed. Samples
-# are normalized before FFT. Frequencies bellow 200Hz and above 6000Hz
-# are ommited. The utility compares the frequencies using 200Hz steps
-# with given or predefined FFT samples and the diff to the most-close FFT
-# sample is printed.
+# to analyze the frequency range. Only one channel is analyzed (use -right
+# option to select the second one). Samples  are normalized before FFT.
+# Frequencies bellow 200Hz and above 6000Hz are ommited. The utility
+# compares the frequencies using 200Hz steps with given or predefined
+# FFT samples and the diff to the most-close FFT sample is printed.
 #
 
 import sys
@@ -201,6 +201,7 @@ def fft_test(args):
   global FFT_SAMPLES
   graph = False
   values = False
+  channel = 0
   while 1:
     if args[0] == '-graph':
       del args[0]
@@ -209,6 +210,14 @@ def fft_test(args):
     if args[0] == '-values':
       del args[0]
       values = True
+      continue
+    if args[0] == '-left':
+      del args[0]
+      channel = 0
+      continue
+    if args[0] == '-right':
+      del args[0]
+      channel = 1
       continue
     if args[0] == '-clean':
       del args[0]
@@ -233,7 +242,7 @@ def fft_test(args):
 
   filename = args[0]
 
-  samplerate, data = read_wav(filename)
+  samplerate, data = read_wav(filename, channel)
 
   windowsize = len(data)
   lowfreq = 200
