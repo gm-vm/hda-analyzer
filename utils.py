@@ -39,19 +39,22 @@ def to_alsa_file(gitfile, prefix=''):
         return '/dev/null'
     if prefix and gitfile.startswith(prefix):
         gitfile = gitfile[len(prefix):]
-    for i in config.ALSA_TRANSLATE:
-        if gitfile.startswith(i):
-            return prefix + config.ALSA_TRANSLATE[i] + gitfile[len(i):]
+    for t in config.ALSA_TRANSLATE:
+        if gitfile.startswith(t[0]):
+            return prefix + t[1] + gitfile[len(t[0]):]
     raise ValueError, repr(gitfile)
+
+def to_alsa_file2(gitfile, prefix=''):
+    return prefix + 'mirror/' + gitfile
 
 def to_kernel_file(gitfile, prefix=''):
     if gitfile == '/dev/null':
         return '/dev/null'
     if prefix and gitfile.startswith(prefix):
         gitfile = gitfile[len(prefix):]
-    for i in config.ALSA_RTRANSLATE:
-        if gitfile.startswith(i):
-            return prefix + config.ALSA_RTRANSLATE[i] + gitfile[len(i):]
+    for t in config.ALSA_RTRANSLATE:
+        if gitfile.startswith(t[0]):
+            return prefix + t[1] + gitfile[len(t[0]):]
     raise ValueError, repr(gitfile)
 
 def git_repo(repo):
@@ -66,6 +69,8 @@ def git(repo):
     return "LANG=C git --work-tree=%s --git-dir=%s" % (repo, repo + '/.git')
 
 def git_popen(repo, cmd):
+    if config.GIT_DEBUG:
+        print "%s %s" % (git(repo), cmd)
     return os.popen("%s %s" % (git(repo), cmd))
     
 def git_system(repo, cmd, exports=None):
@@ -73,6 +78,8 @@ def git_system(repo, cmd, exports=None):
         exports = ''
     else:
         exports += ' ; '
+    if config.GIT_DEBUG:
+        print "%s%s %s" % (exports, git(repo), cmd)
     return os.system("%s%s %s" % (exports, git(repo), cmd))
 
 def git_read_commits(repo, old, head, kernel_tree=False, reverse=False):
@@ -90,10 +97,16 @@ def git_read_commits(repo, old, head, kernel_tree=False, reverse=False):
     curdir = os.getcwd()
     os.chdir(git_repo(repo))
     if old.startswith('__'):
-      fp = git_popen(repo, "log --name-only --pretty=fuller --date=iso%s %s %s" % (reverse, old[2:], head))
+      a, b = old[2:], head
+      if a != b:
+          a += ' ' + b
+      fp = git_popen(repo, "log --name-only --pretty=fuller --date=iso%s %s" % (reverse, a))
     else:
-      print 'Analyzing %s %s..%s:' % (repo, old, head)
-      fp = git_popen(repo, "log --name-only --pretty=fuller --date=iso%s %s..%s" % (reverse, old, head))
+      a, b = old, head
+      if a != b:
+          a += '..' + b
+      print 'Analyzing %s %s:' % (repo, a)
+      fp = git_popen(repo, "log --name-only --pretty=fuller --date=iso%s %s" % (reverse, a))
     res = []
     commit = None
     while 1:

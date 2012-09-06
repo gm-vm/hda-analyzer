@@ -2,10 +2,10 @@
 
 import config
 from sys import exit, stdin, stderr, stdout
-from os import popen, mkdir, system, chdir, getcwd, remove
-from os.path import isdir, exists
+from os import popen, mkdir, system, chdir, getcwd, remove, listdir
+from os.path import isdir, exists, split
 from shutil import rmtree
-from utils import git_popen, git_system, git_repo, is_alsa_file, to_alsa_file, \
+from utils import git_popen, git_system, git_repo, is_alsa_file, to_alsa_file2, \
                   tmpfile, tmpdir, diff_compare2, to_kernel_file, \
                   git_read_commits, raw_subject
 import re
@@ -31,9 +31,27 @@ def check_email(lines, fullemail, commit = False):
         return True
     return True
 
-def analyze_diff(fp, full=False, filter_git=False):
+def analyze_diff(fp, full=False, filter_git=False,
+                 filecheck=is_alsa_file, fileconv=to_alsa_file2):
+
+    def afile(file, prefix):
+        if file.startswith('/dev/'):
+            return file
+        return prefix + file
+
+    def hdr(rlines, addfiles, rmfiles, afile1, afile2):
+      rlines.append('diff --git %s %s\n' % (afile(afile1, 'a/'), afile(afile2, 'b/')))
+      rlines += hlines
+      if hlines and (hlines[0].startswith('new file mode ') or \
+         hlines[0].startswith('old mode ')):
+        addfiles.append(afile2)
+      elif hlines and hlines[0].startswith('deleted file mode '):
+        rmfiles.append(afile1)
+
     rlines = []
+    hlines = []
     ok = False
+    header = False
     addfiles = []
     rmfiles = []
     start = True
@@ -41,32 +59,57 @@ def analyze_diff(fp, full=False, filter_git=False):
         line = fp.readline()
         if not line:
             break
-        if filter_git and line.startswith('index ') and line.find('..') > 0:
-            continue
+        if filter_git:
+            if line.startswith('index ') and line.find('..') > 0:
+                continue
+            if line.startswith('new file mode '):
+                continue
+            if line.startswith('old mode '):
+                continue
+            if line.startswith('new mode '):
+                continue
         if line.startswith('diff --git a/'):
+            if header and ok:
+                hdr(rlines, addfiles, rmfiles, afile1, afile2)
             start = False
+            header = True
+            hlines = []
             file1, file2 = line[11:].split(' ')
             file1 = file1.strip()
             file2 = file2.strip()
-            ok1 = is_alsa_file(file1[2:])
-            ok2 = is_alsa_file(file2[2:])
+            ok1 = filecheck(file1[2:])
+            ok2 = filecheck(file2[2:])
             ok = False
             if ok1 or ok2:
-                afile1 = to_alsa_file(file1, 'a/')
-                afile2 = to_alsa_file(file2, 'b/')
-                rlines.append('diff --git %s %s\n' % (afile1, afile2))
-                addfiles.append(to_alsa_file(file1, 'a/')[2:])
+                afile1 = fileconv(file1, 'a/')
+                afile2 = fileconv(file2, 'b/')
                 ok = True
-        elif ok and (line.startswith('--- a/') or line.startswith('+++ b/')):
-            rlines.append(line[:6] + to_alsa_file(line[6:].strip()) + '\n')
+        elif ok and line.startswith('--- /dev/null'):
+            afile1 = line[4:].strip()
+        elif ok and line.startswith('--- a/'):
+            afile1 = fileconv(line[6:].strip())
+        elif ok and line.startswith('+++ b/'):
+            afile2 = fileconv(line[6:].strip())
+            rlines.append('diff --git %s %s\n' % (afile1, afile2))
+            rlines += hlines
+            rlines.append('--- %s\n' % afile(afile1, 'a/'))
+            rlines.append('+++ %s\n' % afile(afile2, 'b/'))
+            addfiles.append(afile2)
+            header = False
         elif ok and line.startswith('+++ /dev/null'):
-            spec = to_alsa_file(file1, 'a/')[2:]
-            rmfiles.append(spec)
-            addfiles.remove(spec)
-            rlines.append(line)
+            rmfiles.append(afile1)
+            rlines.append('diff --git %s %s\n' % (afile1, '/dev/null'))
+            rlines += hlines
+            rlines.append('--- %s\n' % afile(afile1, 'a/'))
+            rlines.append('+++ /dev/null\n')
+            header = False
+        elif header:
+            hlines.append(line)
         elif ok or (full and start):
             rlines.append(line)
     fp.close()
+    if header and ok:
+        hdr(rlines, addfiles, rmfiles, afile1, afile2)
     return rlines, addfiles, rmfiles
 
 def commit_is_merged(commit, driver_commits):
@@ -83,29 +126,36 @@ def commit_is_merged_diff(driver_repo, kernel_repo, commit):
     for f in commit['files']:
         if not is_alsa_file(f):
             continue
-        a = to_alsa_file(f)
-        lines = popen("diff -u %s %s 2> /dev/null" % (git_repo(driver_repo) + '/' + a, git_repo(kernel_repo) + '/' + f)).readlines()
+        src = git_repo(driver_repo) + '/' + to_alsa_file2(f)
+        dst = git_repo(kernel_repo) + '/' + f
+        lines = popen("diff -uN %s %s 2> /dev/null" % (src, dst)).readlines()
         if lines:
             ok = False
             break
     return ok
 
-def try_to_merge(driver_repo, driver_branch, kernel_repo, commit):
+def try_to_merge(driver_repo, driver_branch, src_repo, commit,
+                 filecheck=is_alsa_file, fileconv=to_alsa_file2,
+                 do_checkout=True):
     comment = commit['comment'].splitlines()
     ref = commit['ref']
 
     print 'Merging %s %s' % (ref[:7], comment[0])
 
-    fp = git_popen(kernel_repo, "diff %s~1..%s" % (ref, ref))
-    rlines, addfiles, rmfiles = analyze_diff(fp)
+    #fp = git_popen(src_repo, "diff --binary %s~1..%s" % (ref, ref))
+    root = ''
+    if 'root_flag' in commit and commit['root_flag']:
+      root = '--root '
+    fp = git_popen(src_repo, "diff-tree -p --binary %s%s" % (root, ref))
+    rlines, addfiles, rmfiles = analyze_diff(fp, filecheck=filecheck, fileconv=fileconv)
     fp.close()
 
-    patchfile = tmpfile('alsa-kmirror-patch')
+    patchfile = tmpfile('alsa-merge-patch')
     fp = open(patchfile, 'w+')
     fp.write(''.join(rlines))
     fp.close()
 
-    commentfile = tmpfile('alsa-kmirror-comment')
+    commentfile = tmpfile('alsa-merge-comment')
     fp = open(commentfile, 'w+')
     fp.write(''.join(commit['comment']))
     fp.close()
@@ -123,10 +173,12 @@ def try_to_merge(driver_repo, driver_branch, kernel_repo, commit):
     exports += 'export GIT_COMMITTER_DATE="%s"' % commit['CommitDate']
 
     curdir = getcwd()
-    if git_system(driver_repo, "checkout -q %s" % driver_branch):
+    if do_checkout and git_system(driver_repo, "checkout -q %s" % driver_branch):
         raise ValueError, 'git checkout'
+
     chdir(git_repo(driver_repo))
-    lines = popen("LANG=C patch -f -p 1 --dry-run --global-reject-file=%s < %s" % (tmpfile("rejects"), patchfile)).readlines()
+    lines = popen("LANG=C patch -f -p 1 --dry-run --reject-file=%s < %s" % (tmpfile("rejects"), patchfile)).readlines()
+    print ''.join(lines)
     failed = fuzz = succeed = 0
     for line in lines:
       if line.find('FAILED') >= 0:
@@ -139,12 +191,22 @@ def try_to_merge(driver_repo, driver_branch, kernel_repo, commit):
     if failed:
    	print 'Merge skipped %s %s (%s failed)' % (ref[:7], comment[0], failed)
         chdir(curdir)
+        if do_checkout and \
+           ref[:7] in ['bdb527e', 'fc5b15f', '82b1d73', \
+                       '02a237b', 'ef8d60f', 'c0fa6c8', \
+                       '1605282', '3946860', 'd70f363', \
+                       '6539799', '152a3a7', '79980d9']:
+          print '  It is probably OK...'
+          return False
+        raise ValueError
         return False
-    if git_system(driver_repo, "apply --check %s" % patchfile):
+    if git_system(driver_repo, "apply --check --binary --allow-binary-replacement %s" % patchfile):
    	print 'Merge skipped %s %s (apply check)' % (ref[:7], comment[0])
         chdir(curdir)
+        if not do_checkout:
+          raise ValueError
         return False
-    if git_system(driver_repo, "apply %s" % patchfile):
+    if git_system(driver_repo, "apply --binary --allow-binary-replacement %s" % patchfile):
         chdir(curdir)
         raise ValueError, 'git apply'
     if addfiles and git_system(driver_repo, "add %s" % ' '.join(addfiles)):
@@ -240,66 +302,68 @@ def try_to_merge_hard(driver_repo, driver_branch, kernel_repo, kernel_branch, co
 
 def compare_trees(driver_repo, driver_branch, kernel_repo, kernel_branch):
     print 'comparing %s/%s (old) and %s/%s (new) repos' % (driver_repo, driver_branch, kernel_repo, kernel_branch)
-    worktree = tmpdir('alsa-kmirror-repo')
+    worktree = tmpdir('alsa-driver-repo')
     worktreek = tmpdir('alsa-kernel-repo')
     rmtree(worktree, ignore_errors=True)
     rmtree(worktreek, ignore_errors=True)
     mkdir(worktree)
     mkdir(worktreek)
-    if git_system(driver_repo, "archive --format=tar %s | tar xf - -C %s" % (driver_branch, worktree)):
-        raise ValueError, 'git export (kmirror)'
+    if git_system(driver_repo, "archive --format=tar %s mirror | tar xf - -C %s" % (driver_branch, worktree)):
+        raise ValueError, 'git export (alsa-driver)'
     if git_system(kernel_repo, "archive --format=tar %s sound include/sound Documentation/DocBook Documentation/sound/alsa | tar xf - -C %s" % (kernel_branch, worktreek)):
         raise ValueError, 'git export (kernel)'
     git_system(driver_repo, "checkout %s" % driver_branch)
     git_system(kernel_repo, "checkout %s" % kernel_branch)
     curdir = getcwd()
     chdir(tmpdir())
-    system("mv alsa-kernel-repo/sound/* alsa-kernel-repo")
-    rmtree("alsa-kernel-repo/sound")
-    system("mv alsa-kernel-repo/include/sound/* alsa-kernel-repo/include")
-    rmtree("alsa-kernel-repo/include/sound")
-    system("mv alsa-kernel-repo/Documentation/sound/alsa/* alsa-kernel-repo/Documentation")
-    system("mv alsa-kernel-repo/Documentation/DocBook/alsa-driver-api.tmpl alsa-kernel-repo/Documentation")
-    rmtree("alsa-kernel-repo/Documentation/sound")
-    rmtree("alsa-kernel-repo/Documentation/DocBook")
-    mkdir("alsa-kernel-repo/Documentation/DocBook")
-    system("mv alsa-kernel-repo/Documentation/alsa-driver-api.tmpl alsa-kernel-repo/Documentation/DocBook")
-    for i in ['.git-ok-commits', '.hgignore', '.hgtags', '.gitignore', 'kernel', 'scripts',
-              'oss', 'usb/usbmixer.h', 'usb/usbmixer_maps.c']:
-        if isdir("alsa-kmirror-repo/%s" % i):
-            rmtree("alsa-kmirror-repo/%s" % i)
-        elif exists("alsa-kmirror-repo/%s" % i):
-            remove("alsa-kmirror-repo/%s" % i)
-    for i in ['oss', 'pci/ac97/ak4531_codec.c', 'isa/sb/sb16_csp_codecs.h',
-    	      'pci/korg1212/korg1212-firmware.h', 'pci/ymfpci/ymfpci_image.h',
-    	      'pci/hda/hda_patch.h',
-    	      'isa/ad1848/ad1848_lib.c', 'isa/cs423x/cs4231_lib.c', 'isa/cs423x/cs4232.c',
-    	      'include/cs4231.h', 'soc/at91/eti_b1_wm8731.c',
-    	      'aoa/codecs/snd-aoa-codec-onyx.c', 'aoa/codecs/snd-aoa-codec-onyx.h',
-    	      'aoa/codecs/snd-aoa-codec-tas-basstreble.h', 'aoa/codecs/snd-aoa-codec-tas-gain-table.h',
-    	      'aoa/codecs/snd-aoa-codec-tas.c', 'sound/aoa/codecs/snd-aoa-codec-tas.h',
-    	      'aoa/codecs/snd-aoa-codec-toonie.c', 'aoa/core/snd-aoa-alsa.c',
-    	      'aoa/core/snd-aoa-alsa.h', 'aoa/core/snd-aoa-core.c',
-    	      'aoa/core/snd-aoa-gpio-feature.c', 'aoa/core/snd-aoa-gpio-pmf.c',
-    	      'aoa/fabrics/snd-aoa-fabric-layout.c', 'aoa/soundbus/i2sbus/i2sbus-control.c',
-    	      'aoa/soundbus/i2sbus/i2sbus-core.c', 'aoa/soundbus/i2sbus/i2sbus-interface.h',
-    	      'aoa/soundbus/i2sbus/i2sbus-pcm.c', 'aoa/codecs/snd-aoa-codec-tas.h',
-    	      'include/uda1341.h', 'i2c/l3/', 'arm/sa11xx-uda1341.c',
-    	      'soc/at91/', 'soc/at32/',
-    	      'usb/caiaq/caiaq-audio.c', 'usb/caiaq/caiaq-audio.h',
-    	      'usb/caiaq/caiaq-control.c', 'usb/caiaq/caiaq-control.h',
-    	      'usb/caiaq/caiaq-device.c', 'usb/caiaq/caiaq-device.h',
-    	      'usb/caiaq/caiaq-input.c', 'usb/caiaq/caiaq-input.h',
-    	      'usb/caiaq/caiaq-midi.c', 'usb/caiaq/caiaq-midi.h',
-    	      'usb/usbmixer.h',
-    	      'usb/usbmixer_maps.c',
-    	      'isa/wavefront/yss225.c'
-    	      ]:
-        if isdir("alsa-kernel-repo/%s" % i):
-            rmtree("alsa-kernel-repo/%s" % i)
-        elif exists("alsa-kernel-repo/%s" % i):
-            remove("alsa-kernel-repo/%s" % i)
-    fp = popen("diff -ruNp alsa-kmirror-repo alsa-kernel-repo")
+    for f in listdir("alsa-kernel-repo/Documentation/DocBook"):
+      if not f in ['.', '..', 'alsa-driver-api.tmpl']:
+        x = "alsa-kernel-repo/Documentation/DocBook/" + f
+        if isdir(x):
+          rmtree(x)
+        else:
+          remove(x)
+    remove("alsa-driver-repo/mirror/.gitignore")
+    rmtree("alsa-driver-repo/mirror/scripts")
+    rmtree("alsa-driver-repo/mirror/sound/oss")
+    rmtree("alsa-kernel-repo/sound/oss")
+    if 0:
+      for i in ['.git-ok-commits', '.hgignore', '.hgtags', '.gitignore', 'kernel', 'scripts',
+                'oss', 'usb/usbmixer.h', 'usb/usbmixer_maps.c']:
+          if isdir("alsa-kmirror-repo/%s" % i):
+              rmtree("alsa-kmirror-repo/%s" % i)
+          elif exists("alsa-kmirror-repo/%s" % i):
+              remove("alsa-kmirror-repo/%s" % i)
+      for i in ['oss', 'pci/ac97/ak4531_codec.c', 'isa/sb/sb16_csp_codecs.h',
+                'pci/korg1212/korg1212-firmware.h', 'pci/ymfpci/ymfpci_image.h',
+                'pci/hda/hda_patch.h',
+                'isa/ad1848/ad1848_lib.c', 'isa/cs423x/cs4231_lib.c', 'isa/cs423x/cs4232.c',
+                'include/cs4231.h', 'soc/at91/eti_b1_wm8731.c',
+                'aoa/codecs/snd-aoa-codec-onyx.c', 'aoa/codecs/snd-aoa-codec-onyx.h',
+                'aoa/codecs/snd-aoa-codec-tas-basstreble.h', 'aoa/codecs/snd-aoa-codec-tas-gain-table.h',
+                'aoa/codecs/snd-aoa-codec-tas.c', 'sound/aoa/codecs/snd-aoa-codec-tas.h',
+                'aoa/codecs/snd-aoa-codec-toonie.c', 'aoa/core/snd-aoa-alsa.c',
+                'aoa/core/snd-aoa-alsa.h', 'aoa/core/snd-aoa-core.c',
+                'aoa/core/snd-aoa-gpio-feature.c', 'aoa/core/snd-aoa-gpio-pmf.c',
+                'aoa/fabrics/snd-aoa-fabric-layout.c', 'aoa/soundbus/i2sbus/i2sbus-control.c',
+                'aoa/soundbus/i2sbus/i2sbus-core.c', 'aoa/soundbus/i2sbus/i2sbus-interface.h',
+                'aoa/soundbus/i2sbus/i2sbus-pcm.c', 'aoa/codecs/snd-aoa-codec-tas.h',
+                'include/uda1341.h', 'i2c/l3/', 'arm/sa11xx-uda1341.c',
+                'soc/at91/', 'soc/at32/', 'soc/s3c24xx/',
+                'usb/caiaq/caiaq-audio.c', 'usb/caiaq/caiaq-audio.h',
+                'usb/caiaq/caiaq-control.c', 'usb/caiaq/caiaq-control.h',
+                'usb/caiaq/caiaq-device.c', 'usb/caiaq/caiaq-device.h',
+                'usb/caiaq/caiaq-input.c', 'usb/caiaq/caiaq-input.h',
+                'usb/caiaq/caiaq-midi.c', 'usb/caiaq/caiaq-midi.h',
+                'usb/usbmixer.h',
+                'usb/usbmixer_maps.c',
+                'isa/wavefront/yss225.c'
+                ]:
+          if isdir("alsa-kernel-repo/%s" % i):
+              rmtree("alsa-kernel-repo/%s" % i)
+          elif exists("alsa-kernel-repo/%s" % i):
+              remove("alsa-kernel-repo/%s" % i)
+    fp = popen("diff -ruNp alsa-driver-repo/mirror alsa-kernel-repo")
     notempty = False
     while 1:
         line = fp.readline()
@@ -351,6 +415,7 @@ def driver_merge(driver_repo, driver_branch, kernel_repo, kernel_branch):
         raise ValueError, 'git checkout'
     driver_commits = git_read_commits(driver_repo, config.GIT_DRIVER_MERGE, driver_branch)
     kernel_commits = git_read_commits(kernel_repo, config.GIT_KERNEL_MERGE, kernel_branch, kernel_tree=True)
+    #kernel_commits = git_read_commits(kernel_repo, 'd80852223ecabd1ab433a9c71436d81b697ef1fc~1', 'd80852223ecabd1ab433a9c71436d81b697ef1fc', kernel_tree=True)
     if not driver_commits or not kernel_commits:
       print 'Nothing to do'
       return

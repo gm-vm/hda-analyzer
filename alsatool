@@ -14,12 +14,13 @@ import sys
 import getopt
 import re
 import config
+from traceback import print_exc
 from shutil import rmtree, copyfile
 from rfc822 import parsedate_tz
 from utils import git_repo, git_system, git_popen, diff_compare, \
-                  git_read_commits, raw_subject, eprint, tmpdir, package
-from drivermerge import analyze_diff, driver_merge, compare_trees
-from comments import COMMENT_MAP
+                  git_read_commits, raw_subject, eprint, tmpdir, tmpfile, package, \
+                  to_kernel_file
+from drivermerge import analyze_diff, driver_merge, compare_trees, try_to_merge
 
 VERSION="2.0"
 
@@ -119,8 +120,17 @@ def version_sort(tags):
         if tag == "tip":
             continue
         try:
-            a, b, c = tag.split('.')
+            t = tag.split('.')
+            if len(t) == 3:
+                a, b, c = t
+                d = None
+            elif len(t) == 4:
+                a, b, c, d = t
+            else:
+                print 'Ignoring tag:', repr(tag), repr(t)
+                raise ValueError
             if a[0] != 'v':
+                print 'Ignoring tag:', repr(tag), repr(t)
                 raise ValueError
             a = int(a[1:])
             b = int(b)
@@ -130,7 +140,13 @@ def version_sort(tags):
             c1 = int(c[:idx])
             c2 = c[idx:]
             if c2 == '':
-                c2 = 'zzzzz'
+                c2 = '01'
+                if not d is None:
+                    c2 += d
+            elif c2.startswith('rc'):
+                c2 = '00' + c2
+            else:
+                c2 = '02' + c2
             str = "%08i.%08i.%08i.%s" % (a, b, c1, c2)
             tags1.append(str)
             tags2[str] = tag
@@ -218,16 +234,9 @@ def release1(repo, tag):
                 raise ValueError, "autoconf"
         if os.system("./configure --with-debug=full --with-isapnp=yes --with-sequencer=yes --with-kernel=%s" % (config.ROOT + '/alsa-kernel')):
                 raise ValueError, "configure"
-        if os.system("make include/sound/version.h"):
+        if os.system("make -C include/sound version.h"):
                 raise ValueError, "include/sound/version.h"
         files.append('configure.in')
-        os.chdir(config.ROOT + '/alsa-kmirror')
-        #if os.system("git add include/version.h"):
-        #	raise ValueError, "git add"
-        #if os.system('git commit -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % tag):
-        #	raise ValueError, "git add"
-        if os.system('git tag %s -a -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % (tag, tag)):
-                raise ValueError, "git tag"
     elif repo in ['alsa-lib', 'alsa-plugins', 'alsa-utils',
                   'alsa-firmware', 'alsa-oss']:
         lines = open(config.ROOT + '/' + repo + '/configure.in').readlines()
@@ -270,8 +279,12 @@ def release1(repo, tag):
             raise ValueError, "git add %s" % file
     if os.system('git commit -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % tag):
         raise ValueError, "git commit"
-    if os.system('git tag %s -a -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % (tag, tag)):
-        raise ValueError, "git tag"
+    if not repo in ['alsa-driver']:
+        if os.system('git tag %s -a -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % (tag, tag)):
+            raise ValueError, "git tag"
+    else:
+        if os.system('git branch -l %s %s' % tag):
+            raise ValueError, "git new branch"
 
 def release(argv):
     if argv == None or argv[0][0] != 'v':
@@ -289,45 +302,53 @@ def release(argv):
             repos.remove('alsa')
     if 'alsa-kmirror' in repos:
             repos.remove('alsa-kmirror')
-    if 'alsa-driver' in repos:
-            print('Updating alsa-kernel.git/include/sound/version.h...')
-            os.chdir(config.ROOT + '/' + 'alsa-kernel')
-            if os.system('git checkout master'):
-                    raise ValueError, "git checkout master"
-            if os.system('git pull origin master'):
-                    raise ValueError, "git pull origin master"
-            version = open('include/sound/version.h').read(4096)
-            pos1 = version.find("CONFIG_SND_VERSION")
-            pos2 = version[pos1:].find('"')
-            pos3 = version[pos1+pos2+1:].find('"')
-            active = version[pos1+pos2+1:pos1+pos2+pos3+1]
-            if active != tag[1:]:
-                    version = version[:pos1+pos2] + '"' + tag[1:] + '"' + version[pos1+pos2+pos3+2:]
-                    open('include/sound/version.h', 'w+').write(version)
-                    if os.system('git add include/sound/version.h'):
-                            raise ValueError, "git add"
-                    if os.system('git commit -m "ALSA: Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % tag):
-                            raise ValueError, "git commit"
-                    if os.system('git push origin master:refs/heads/master'):
-                            raise ValueError, "git push"
-            else:
-                    print('Already updated...')
     print('Doing release for: %s' % ','.join(repos))
     for repo in repos:
             release1(repo, tag)
 
-def _merge_members(members, module='alsa-driver', nice=False):
+def _to_changes_log(str, file, module):
+  f = ''
+  log = ''
+  if module == 'alsa-driver':
+    f = config.ROOT + '/alsa-kmirror/' + file
+    if not os.path.exists(f):
+      f = ''
+  if not f:
+    f = config.ROOT + '/' + module + '/' + file
+  if os.path.exists(f):
+    if not os.path.isdir(f):
+      fp = open(f)
+      lines = fp.readlines()
+      while lines[0] in ['/*\n', ' *\n']:
+        del lines[0]
+      nlines = []
+      for line in lines:
+        if line.startswith('MODULE_DESCRIPTION'):
+          nlines.append(line)
+      lines = nlines + lines
+      log = '>>> ' + '>>> '.join(lines[:15])
+      fp.close()
+  fp = open("/tmp/changes-log.txt", "a+")
+  fp.write(str + "\n")
+  if log:
+    fp.write(log)
+  fp.close()
+
+def _merge_members(regex, members, module='alsa-driver', nice=False):
 
     def mgo(file, module):
-        global COMMENT_MAP
-        map = COMMENT_MAP[module]
-        if module == 'alsa-driver' and file[:6] == '/acore':
-                file = '/' + file[2:]
-        for i in map:
-                if re.compile("^" + i[0]).search(file):
-                        if i[1] == 'ERROR':
-                                break
-                        return i[1]
+        if module == 'alsa-driver':
+                if file.startswith('/acore'):
+                        file = '/' + file[2:]
+                elif file.startswith('/mirror/sound'):
+                        file = file[13:]
+                elif file.startswith('/mirror/include/sound'):
+                        file = '/include' + file[21:]
+                elif file.startswith('/mirror/Documentation/sound/alsa/'):
+                        file = '/Documentation' + file[32:]
+        res = regex.search(module, file)
+        if res != 'ERROR':
+                return res
         if file.endswith('/.cvsignore'):
                 return 'IGNORE'
         if file.endswith('/.hgignore'):
@@ -342,8 +363,6 @@ def _merge_members(members, module='alsa-driver', nice=False):
                 return file
         return 'ERROR'
 
-    global GERRORS
-
     changes = []
     result = []
     for file in members:
@@ -351,12 +370,14 @@ def _merge_members(members, module='alsa-driver', nice=False):
             while file != '':
                     result1 = mgo(file, module)
                     if result1 == 'ERROR':
-                            config.GERRORS += 1
-                            str = 'Cannot identify file "%s" from module %s' % (file, module)
-                            fp = open("/tmp/changes-log.txt", "a+")
-                            fp.write(str + "\n")
-                            fp.close()
-                            print(str, ' {see /tmp/changes-log.txt file}')
+                            found = False
+                            for a in config.GERRORSA:
+                                    if a[0] == module and a[1] == file:
+                                            found = True
+                                            break
+                            if not found:
+                                config.GERRORS += 1
+                                config.GERRORSA.append((module, file))
                             result1 = ''
                     if result1 != '':
                             file = ''
@@ -422,8 +443,6 @@ def changes(argv):
                     changes.append(a)
 
     def merge_members(changes):
-            global GERRORS
-
             res = {}
             try:
                     os.remove("/tmp/changes-log.txt")
@@ -433,7 +452,7 @@ def changes(argv):
                     module = change['module']
                     if not res.has_key(module):
                             res[module] = {}
-                    members = _merge_members(change['files'], module)
+                    members = _merge_members(regex, change['files'], module)
                     if len(members) == 0:
                             continue
                     members = members[0]
@@ -444,9 +463,14 @@ def changes(argv):
                             if not res[module].has_key(mem):
                                     res[module][mem] = []
                             res[module][mem].append(change)
-                    if config.GERRORS > 0:
-                            print('Bailing out...')
-                            sys.exit(1);
+            if config.GERRORS > 0:
+                    for a in config.GERRORSA:
+                            str = 'Cannot identify file "%s" from module %s' % (a[1], a[0])
+                            _to_changes_log(str, a[1], a[0])
+                            print(str)
+                    print('^^^ {see /tmp/changes-log.txt file}')
+                    print('Bailing out...')
+                    sys.exit(1);
             return res
 
     def get_items(allitems):
@@ -495,6 +519,26 @@ def changes(argv):
     def esc(str):
             return str.replace('>', '&gt;').replace('<', '&lt;').replace('&', '&amp;')
 
+    def mediawiki_header(fp, title):
+            fp.write("""\
+<mediawiki xsi:schemaLocation="http://www.mediawiki.org/xml/export-0.3/ http://www.mediawiki.org/xml/export-0.3.xsd" version="0.3" xml:lang="en">
+<page>
+<title>%s</title>
+<revision>
+<id>1</id>
+<contributor><username>Perex</username><id>2</id></contributor>
+<text xml:space="preserve">
+{| align="right"\n| __TOC__\n|}
+""" % title)
+
+    def mediawiki_footer(fp):
+          fp.write("""\
+</text>
+</revision>
+</page>
+</mediawiki>
+""")
+
     try:
             rev1 = argv[0]
             rev2 = argv[1]
@@ -502,6 +546,8 @@ def changes(argv):
             sys.stderr.write('Please, specify oldtag and newtag\n')
             sys.exit(1)
 
+    from comments import CommentRegex
+    regex = CommentRegex()
     changes = []
     fullset = config.REPOSITORIES
 
@@ -517,12 +563,19 @@ def changes(argv):
             fp = os.popen("%s tag 2> /dev/null" % git(module))
             tags = fp.readlines()
             fp.close()
+            fp = os.popen("%s branch 2> /dev/null" % git(module))
+            branches = fp.readlines()
+            fp.close()
+            for b in branches:
+                tags.append(b[2:])
             if not check_tag(tags, rev2):
                     continue
             tags1 = []
-            base = rev2
-            while not check_tag(tags, xrev):
-                    if rev2[-3:-1] == "rc":
+            base = rev2 == 'HEAD' and 'v999.999.999' or rev2
+            if not check_tag(tags, xrev):
+                    if rev2[0] != 'v':
+                            base = 'v9.9.9'
+                    elif rev2[-3:-1] == "rc":
                             base = rev2[:-3]
                     elif rev2[-1:] >= "a":
                             base = rev2[:-1]
@@ -533,7 +586,9 @@ def changes(argv):
                             if tag.strip() != rev2:
                                     tags1.append(tag)
                     tags1 = version_sort(tags1)
-                    if len(tags1) != 0:
+                    if tags1 is None:
+                            tags1 = []
+                    elif len(tags1) != 0:
                             xrev = tags1[len(tags1)-1]
                             break
                     major, minor, subminor = base.split('.')
@@ -555,43 +610,50 @@ def changes(argv):
                     if not groups.has_key(rev):
                             groups[rev] = []
                     groups[rev].append(module)
-    print('<mediawiki xsi:schemaLocation="http://www.mediawiki.org/xml/export-0.3/ http://www.mediawiki.org/xml/export-0.3.xsd" version="0.3" xml:lang="en">')
-    print('<page>')
-    print('<title>Changes %s %s</title>' % (rev1, rev2))
-    print('<revision>')
-    print('<id>1</id>')
-    print('<contributor><username>Perex</username><id>2</id></contributor>')
-    print('<text xml:space="preserve">')
-    print('{| align="right"\n| __TOC__\n|}')
+
+    short = ''
+    long = ''
+    long_hda = ''
+    long_soc = ''
+    rev = None
+
     for rev in groups:
-            str = '=Changelog between %s and %s releases=' % (rev_to_dot(rev), rev_to_dot(rev2))
-            print(str)
+            str = '=Changelog between %s and %s releases=\n' % (rev_to_dot(rev), rev_to_dot(rev2))
+            short += str
             for module in groups[rev]:
-                    print('==%s==' % module)
+                    short += '==%s==\n' % module
                     items = get_items(res[module].keys())
                     for items1 in items:
                             for b in items1:
                                     if not res[module].has_key(b):
                                             continue
-                                    print('===%s===' % esc(b))
+                                    short += '===%s===\n' % esc(b)
                                     for a in res[module][b]:
                                             log = a['comment'].splitlines()[0]
                                             if log[:9] == 'Summary: ':
                                                     log = log[9:]
                                             elif log[:8] == 'Summary:':
                                                     log = log[8:]
-                                            print(': %s' % esc(log))
+                                            short += ': %s\n' % esc(log)
     for rev in groups:
-            str = '=Detailed changelog between %s and %s releases=' % (rev_to_dot(rev), rev_to_dot(rev2))
-            print(str)
+            long += '=Detailed changelog between %s and %s releases=\n' % (rev_to_dot(rev), rev_to_dot(rev2))
+            long += str
             for module in groups[rev]:
-                    print('==%s==' % module)
+                    long += '==%s==\n' % module
                     items = get_items(res[module].keys())
                     for items1 in items:
                             for b in items1:
                                     if not res[module].has_key(b):
                                             continue
-                                    print('===%s===' % esc(b))
+                                    hdaflag = b.startswith('HDA ') and module == 'alsa-driver'
+                                    socflag = (b.startswith('SoC ') or b.startswith('Soc ')) and module == 'alsa-driver'
+                                    long += '===%s===\n' % esc(b)
+                                    if hdaflag:
+                                        long += ': see [[Detailed HDA changes %s %s]]\n' % (rev1, rev2)
+                                        long_hda += '===%s===\n' % esc(b)
+                                    if socflag:
+                                        long += ': see [[Detailed SoC changes %s %s]]\n' % (rev1, rev2)
+                                        long_soc += '===%s===\n' % esc(b)
                                     for a in res[module][b]:
                                             log = a['comment'].splitlines()
                                             first = "-"
@@ -608,12 +670,38 @@ def changes(argv):
                                                             continue
                                                     if l[:4].lower() == "cc: ":
                                                             continue
-                                                    print(': %s %s' % (first, esc(l)))
+                                                    if hdaflag:
+                                                      long_hda += ': %s %s\n' % (first, esc(l))
+                                                    elif socflag:
+                                                      long_soc += ': %s %s\n' % (first, esc(l))
+                                                    else:
+                                                      long += ': %s %s\n' % (first, esc(l))
                                                     first = " "
-    print('</text>')
-    print('</revision>')
-    print('</page>')
-    print('</mediawiki>')
+
+    print("Changes are in /tmp/alsa-changes.wiki")
+    fp = open('/tmp/alsa-changes.wiki', 'w+')
+    mediawiki_header(fp, 'Changes %s %s' % (rev1, rev2))
+    fp.write('[[Detailed changes %s %s]]\n' % (rev1, rev2))
+    fp.write(short)
+    mediawiki_footer(fp)
+
+    fp = open('/tmp/alsa-changes1.wiki', 'w+')
+    mediawiki_header(fp, 'Detailed changes %s %s' % (rev1, rev2))
+    fp.write(long)
+    mediawiki_footer(fp)
+
+    idx = 2
+    if rev:
+        for id in [('HDA', long_hda), ('SoC', long_soc)]:
+          fp = open('/tmp/alsa-changes%s.wiki' % idx, 'w+')
+          mediawiki_header(fp, 'Detailed %s changes %s %s' % (id[0], rev1, rev2))
+          str = '=Detailed %s changelog between %s and %s releases=\n' % (id[0], rev_to_dot(rev), rev_to_dot(rev2))
+          fp.write(str + '\n')
+          module = 'alsa-driver'
+          fp.write('==%s==\n' % module)
+          fp.write(id[1])
+          mediawiki_footer(fp)
+          idx += 1
 
 def usage(code=0, msg=''):
     print(__doc__ % globals())
@@ -818,12 +906,14 @@ def import_(argv):
     print('Already merged patches: %s' % skipcount)
     print('Patches to be merged: %s' % len(tomerge))
     for l1 in tomerge:
+        print l1['ref'], l1['comment'].splitlines()[0][:-1]
         oldrev = os.popen("git rev-parse HEAD").readline().strip()
         if extpick(['.', l1['ref']], sign=True, interactive=False):
             if os.system("git am -3 --abort") or \
                os.system("git reset --hard"):
                    raise ValueError
             sys.stderr.write('An error occured... Skipping...\n')
+            sys.stderr.write('Error ref: %s\n' % l1['ref'])
         rev = os.popen("git rev-parse HEAD").readline().strip()
         if oldrev == rev:
             sys.stdout.write('No change, do you want to black list this patch? (Y/ ) ')
@@ -848,7 +938,12 @@ def getgitfile(url, file, size=1024):
     return res
 
 def getorigin(repo = 'alsa-kernel'):
-    origin = getgitfile('http://git.alsa-project.org/http/%s.git' % repo, 'refs/heads/master')
+    origin = getgitfile('http://git.alsa-project.org/http/%s.git' % repo, 'info/refs', size=8192)
+    for line in origin.splitlines():
+        a = line.strip().split('\t')
+        if a[1] == 'refs/heads/master':
+            origin = a[0]
+            break
     origin = origin.strip()
     if len(origin) != 40:
         raise ValueError, "git.alsa-project.org is down?"
@@ -969,6 +1064,252 @@ def kimport(argv=None):
         if import_([repo]):
             raise ValueError, "import_ %s" % repo
 
+def one(argv=''):
+
+    def filecheck1(file):
+        return True
+        
+    def filecheck2(file):
+        return True
+
+    def fileconv1(file, prefix=''):
+        if file == '/dev/null':
+            return file
+        if prefix and file.startswith(prefix):
+            file = file[len(prefix):]
+        return file
+
+    def fileconv2(file, prefix=''):
+        if file == '/dev/null':
+            return file
+        if prefix and file.startswith(prefix):
+            file = file[len(prefix):]
+        if file.startswith('Documentation/DocBook/alsa-driver-api.tmpl'):
+            pass
+        elif file.startswith('Documentation/'):
+            file = 'Documentation/sound/alsa/' + file[14:]
+        elif file.startswith('include/'):
+            file = 'include/sound/' + file[8:]
+        elif file.startswith('scripts/'):
+            pass
+        elif file.startswith('.'):
+            pass
+        else:
+            file = 'sound/' + file
+        return 'mirror/' + file
+
+    dir = os.path.expanduser('~/alsa/')
+    repo1 = 'alsa-driver'
+    repo2 = 'alsa-kmirror'
+    repo3 = 'alsa-driver.new'
+    conv = {repo1:fileconv1, repo2:fileconv2}
+    check = {repo1:filecheck1, repo2:filecheck2}
+    if argv and 'clear' in argv and os.path.exists(dir + repo3):
+        rmtree(dir + repo3)
+    if not os.path.exists(dir + repo3):
+        os.mkdir(dir + repo3)
+        if git_system(repo3, "init"):
+            raise ValueError, "git init error"
+    tags1 = version_sort(os.popen("%s tag" % git(repo1)).readlines())
+    tags1.remove('v1.0.2')
+    tags1.remove('v1.0.2b')
+    tags2 = version_sort(os.popen("%s tag" % git(repo2)).readlines())
+    tags1.append('master')
+    tags2.append('master')
+    tags3 = version_sort(os.popen("%s tag" % git(repo3)).readlines())
+    init1 = os.popen("%s log master --pretty=format:%%H  --reverse" % git(repo1)).readline().strip()
+    init2 = os.popen("%s log master --pretty=format:%%H  --reverse" % git(repo2)).readline().strip()
+    if not tags1 or not tags2 or not init1 or not init2:
+        raise ValueError, "init"
+
+    if tags3:
+        for tag in tags3:
+            tags1.remove(tag)
+            tags2.remove(tag)
+
+    for tag in tags1:
+        if not tag in tags2:
+            raise ValueError, "tag %s is not in %s" % (tag, repo2)           
+    for tag in tags2:
+        if not tag in tags1:
+            raise ValueError, "tag %s is not in %s" % (tag, repo1)
+
+    ptag = None
+    if tags3:
+        ptag = tags3[-1]
+        if git_system(repo3, "reset --hard %s" % ptag):
+            raise ValueError, "git reset tag error"
+
+    for tag in tags1:
+        prev1 = prev2 = ptag
+        if ptag is None:
+            prev1 = init1
+            prev2 = init2
+        ptag = tag[:]
+
+        print prev1, prev2, tag
+        log1 = git_read_commits(dir + repo1, prev1, tag, reverse=True)
+        log2 = git_read_commits(dir + repo2, prev2, tag, reverse=True)
+        if prev1 == init1:
+            l1 = git_read_commits(dir + repo1, prev1, prev1)
+            l1[0]['root_flag'] = True
+            l2 = git_read_commits(dir + repo2, prev2, prev2)
+            l2[0]['root_flag'] = True
+            log1 = l1 + log1
+            log2 = l2 + log2
+
+        if not log1 and not log2:
+            continue
+
+        log = []
+        while log1 or log2:
+            if not log1:
+                log.append(log2[0])
+                log2.pop(0)
+                log[-1]['repo'] = repo2
+            elif not log2:
+                log.append(log1[0])
+                log1.pop(0)
+                log[-1]['repo'] = repo1
+            else:
+                if log1[0]['CommitDate'] <= log2[0]['CommitDate']:
+                    log.append(log1[0])
+                    log1.pop(0)
+                    log[-1]['repo'] = repo1
+                else:
+                    log.append(log2[0])
+                    log2.pop(0)
+                    log[-1]['repo'] = repo2
+
+        for l in log:
+            if l['repo'] == 'alsa-kmirror' and \
+               l['ref'] in ['8ef26bb6279a048d838063a4b740cb716b30c75a',
+                            '6ae95af9a82c9f80a80ddd41a5ca2964a380fb77',
+                            '3cd9d1b408f301cdbf42e94a5cd3c6eb7019b57c',
+                            '60b096ce86d24ae797813dbcc117ca9194f82cca',
+                            '73b89c7c2d4f6f194316bcbac3448ea6e146aeb4',
+                            '88b6b99716dfb5026305f0e9a11f99a650b3e12f']:
+                continue
+            if l['comment'].startswith('Merge branch '):
+                continue
+            ok = False
+            for a in ('alsatool-abort', 'alsatool-skip'):
+                if os.path.exists(tmpfile(a)):
+                    os.remove(tmpfile(a))
+            while not ok:
+                try:
+                    try_to_merge(repo3, 'master', l['repo'], l, fileconv=conv[l['repo']], filecheck=check[l['repo']], do_checkout=False)
+                    ok = True
+                except:
+                    print "Unexpected error:", sys.exc_info()[0]
+                    print "-"*60
+                    print print_exc(file=sys.stdout)
+                    print "-"*60
+                    print "Type 'touch %s; exit' to abort..." % tmpfile("alsatool-abort")
+                    print "Type 'touch %s; exit' to skip the patch..." % tmpfile("alsatool-skip")
+                    print "Or make changes and type 'exit' to restart..."
+                    os.chdir(dir + repo3)
+                    os.system("PS1='alsatool fix [\u@\h \W]\$ ' /bin/bash")
+                    if os.path.exists(tmpfile("alsatool-abort")):
+                        raise
+                    if os.path.exists(tmpfile("alsatool-skip")):
+                        print "Skipping..."
+                        ok = True
+                    
+        if git_system(repo3, "tag -a %s -m \"Release %s\"" % (tag, tag)):
+            raise ValueError
+
+def onecheck(argv=''):
+    from dircache import listdir
+
+    def do_diff(path1, path2):
+        lines = os.popen("LANG=C diff -ruNp \"%s\" \"%s\"" % (path1, path2)).read(65536)
+        sys.stdout.write(''.join(lines))
+
+    def do_driver(path1, path2, level=0):
+        for f in listdir(path1):
+            if f.endswith('.mod') or f.endswith('.cmd') or f.endswith('.o') or \
+               f.endswith('.mod.c') or f.endswith('.ko') or f == 'modules.order' or \
+               f.endswith('~') or f.endswith('.orig') or f.endswith('.rej') or \
+               f.endswith('.d') or f.startswith('out.txt'):
+                continue
+            elif level == 0:
+                if f in ['.git', 'alsa-kernel', 'sound', 'Makefile.conf', \
+                         'Module.symvers', 'acinclude.m4', 'aclocal.m4', \
+                         'configure', 'toplevel.config']:
+                    continue
+            elif level == 1:
+                if f in ['config.h', 'config1.h']:
+                    continue
+                elif f.startswith('modprobe.work') or f.startswith('alsa-delay'):
+                    continue
+                elif f.startswith('modprobe.test') or f.startswith('alsaloop.'):
+                    continue
+            f1 = path1 + '/' + f
+            f2 = path2 + '/' + f
+            if os.path.islink(f1):
+                continue
+            elif os.path.isdir(f1):
+                do_driver(f1, f2, level + 1)
+            else:
+                do_diff(f1, f2)
+
+    def do_mirror(path1, path2, level=0):
+        for f in listdir(path1):
+            if f.endswith('.mod') or f.endswith('.cmd') or f.endswith('.o') or \
+               f.endswith('.mod.c') or f.endswith('.ko') or f == 'modules.order' or \
+               f.endswith('~') or f.endswith('.orig') or f.endswith('.rej') or \
+               f.endswith('.d') or f.startswith('out.txt'):
+                continue
+            elif level == 0:
+                if f in ['.git', '.gitignore', '.kmirrorpick', '.editmsg']:
+                    continue
+            f1 = path1 + '/' + f
+            f2 = path2 and path2 + '/' + f or f
+            if os.path.islink(f1):
+                continue
+            elif os.path.isdir(f1):
+                do_mirror(f1, f2, level + 1)
+            elif f2.startswith('scripts/'):
+                do_diff(f1, dir + repo3 + '/mirror/' + f2)
+            else:
+                do_diff(f1, dir + repo3 + '/mirror/' + to_kernel_file(f2))
+
+    dir = os.path.expanduser('~/alsa/')
+    repo1 = 'alsa-driver'
+    repo2 = 'alsa-kmirror'
+    repo3 = 'alsa-driver.new'
+    #do_driver(dir + repo1, dir + repo3)
+    do_mirror(dir + repo2, '')
+
+def oneretag(argv=''):
+
+    dir = os.path.expanduser('~/alsa/')
+    repo1 = 'alsa-driver'
+    repo3 = 'alsa-driver.new'
+
+    tags1 = version_sort(os.popen("%s tag" % git(repo1)).readlines())
+    tags1.remove('v1.0.2')
+    tags1.remove('v1.0.2b')
+
+    log3 = git_read_commits(dir + repo3, 'v1.0.1~4', 'HEAD', reverse=True)
+
+    for tag in tags1:
+        log1 = git_read_commits(dir + repo3, tag + '~1', tag)
+        x = log1[0]
+        match = None
+        for l in log3:
+            if l['AuthorDate'] == x['AuthorDate']:
+                match = l
+        if not match:
+            print 'Tag: %s not found' % tag
+            raise ValueError
+        else:
+            if git_system(repo3, "tag -d %s" % (tag)):
+                raise ValueError
+            if git_system(repo3, "branch -l %s %s" % (tag, match['ref'])):
+                raise ValueError
+
 def compile0(repo):
     from dircache import listdir
     dir = tmpdir('compile')
@@ -993,6 +1334,7 @@ def compile0(repo):
         args = ''
         if repo == 'alsa-driver':
             args = ' --with-kernel=$HOME/alsa/alsa-kernel'
+        print "configure%s" % args
         if os.system("./configure%s" % args):
             raise ValueError, "configure"
     if not repo in ['alsa-python']:
@@ -1022,7 +1364,7 @@ def dimport(argv=''):
             raise ValueError, "repo syntax error"
         repo = a
         branch = b
-    return driver_merge('alsa-kmirror', 'master', repo, branch)
+    return driver_merge('alsa-driver', 'master', repo, branch)
 
 def ddiff(argv=''):
     repo = 'alsa-kernel'
@@ -1033,7 +1375,7 @@ def ddiff(argv=''):
             raise ValueError, "repo syntax error"
         repo = a
         branch = b
-    return compare_trees('alsa-kmirror', 'master', repo, branch)
+    return compare_trees('alsa-driver.new', 'master', repo, branch)
 
 def kmerge(argv=''):
     os.chdir(config.ROOT + '/alsa-kernel')
@@ -1099,7 +1441,10 @@ CMDS=[
     ['ddiff', ddiff, '[remote/branch]', 'Show diff between alsa-kmirror tree and specified repo/branch.'],
     ['tolinus', tolinus, 'branch', 'Send a merge request for given branch to linus'],
     ['compile', compile, '', 'Compile all ALSA packages from actual snapshot (compilation test)'],
-    ['kmerge', kmerge, '', 'Merge trees for all ALSA developers']
+    ['kmerge', kmerge, '', 'Merge trees for all ALSA developers'],
+    ['one', one, '', 'Merge alsa-kmirror and alsa-driver trees to one alsa-driver tree'],
+    ['onecheck', onecheck, '', 'Compare integrity of the one alsa-driver tree'],
+    ['oneretag', oneretag, '', 'Retag the one alsa-driver tree']
 ]
  
 def main():
