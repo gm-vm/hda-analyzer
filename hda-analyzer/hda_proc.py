@@ -280,7 +280,8 @@ class ProcNode(HDABaseProc):
       'Validity': DIG1_BITS['VALIDITY'],
       'ValidityCfg': DIG1_BITS['VALIDITYCFG'],
       'Preemphasis': DIG1_BITS['EMPHASIS'],
-      'Copyright': DIG1_BITS['COPYRIGHT'],
+      'Copyright': DIG1_BITS['COPYRIGHT'], # old buggy format
+      'Non-Copyright': DIG1_BITS['COPYRIGHT'],
       'Non-Audio': DIG1_BITS['NONAUDIO'],
       'Pro': DIG1_BITS['PROFESSIONAL'],
       'GenLevel': DIG1_BITS['LEVEL']
@@ -628,6 +629,10 @@ class HDACodecProc(HDACodec, HDABaseProc):
       'data': 0,
       'unsol': 0
     }
+    if lines[idx].startswith('State of AFG node'):
+      idx += 1
+      while lines[idx].startswith('  Power'):
+        idx += 1
     self.proc_gpio_cap = 0
     if lines[idx].startswith('GPIO: '):
       idx, self.proc_gpio_cap = decodegpiocap(idx, 'GPIO: ')
@@ -674,6 +679,8 @@ class HDACodecProc(HDACodec, HDABaseProc):
           node.add_unsolicited(line[15:]) 
         elif line.startswith('  Digital category:'):
           node.add_digitalcategory(line[20:]) 
+        elif line.startswith('  IEC Coding Type: '):
+          pass
         elif line.startswith('  Amp-In caps: '):
           node.add_ampcaps(line[15:], HDA_INPUT) 
         elif line.startswith('  Amp-Out caps: '):
