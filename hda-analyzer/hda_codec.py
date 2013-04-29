@@ -316,7 +316,17 @@ class HDAAmpVal:
     self.indices = 1
     self.origin_vals = None
     if dir == HDA_INPUT:
-      self.indices = node.wtype_id == 'PIN' and 1 or len(node.connections)
+      if node.wtype_id == 'PIN':
+        self.indices = 1
+      elif node.connections:
+        self.indices = len(node.connections)
+      else:
+        self.indices = 0
+      self.reread()
+ 
+    def __write_val(self, idx):
+
+
     self.reread()
 
   def __write_val(self, idx):
