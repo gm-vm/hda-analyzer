@@ -322,11 +322,6 @@ class HDAAmpVal:
         self.indices = len(node.connections)
       else:
         self.indices = 0
-      self.reread()
- 
-    def __write_val(self, idx):
-
-
     self.reread()
 
   def __write_val(self, idx):
