@@ -285,9 +285,10 @@ class NodeGui(gtk.ScrolledWindow):
       frame.set_border_width(4)
       vbox = gtk.VBox(False, 0)
       if caps:
-        str =  'Offset:          %d\n' % caps.ofs
-        str += 'Number of steps: %d\n' % caps.nsteps
-        str += 'Step size:       %d\n' % caps.stepsize
+        if caps.ofs != None:
+          str =  'Offset:          %d\n' % caps.ofs
+          str += 'Number of steps: %d\n' % caps.nsteps
+          str += 'Step size:       %d\n' % caps.stepsize
         str += 'Mute:            %s\n' % (caps.mute and "True" or "False")
         vbox.pack_start(self.__new_text_view(text=str), True, True, 0)
         idx = 0
