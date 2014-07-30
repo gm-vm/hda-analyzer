@@ -727,6 +727,11 @@ class HDACodecProc(HDACodec, HDABaseProc):
           node.add_processindex(line[21:])
         elif line.startswith('  Volume-Knob: '):
           node.add_volknob(line[15:])
+        elif line.startswith('  In-driver Connection: '):
+          idx += 1
+          pass
+        elif line.startswith('  Devices: '):
+          pass
         else:
           self.wrongfile(line)
         idx += 1
