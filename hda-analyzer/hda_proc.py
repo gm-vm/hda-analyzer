@@ -734,6 +734,8 @@ class HDACodecProc(HDACodec, HDABaseProc):
           pass
         elif line.startswith('  Devices: '):
           pass
+        elif line.startswith('     Dev '):
+          pass
         else:
           self.wrongfile(line)
         idx += 1
