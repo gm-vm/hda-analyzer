@@ -37,25 +37,14 @@ def is_alsa_file(file):
 def to_alsa_file(gitfile, prefix=''):
     if gitfile == '/dev/null':
         return '/dev/null'
-    if prefix and gitfile.startswith(prefix):
-        gitfile = gitfile[len(prefix):]
-    for t in config.ALSA_TRANSLATE:
-        if gitfile.startswith(t[0]):
-            return prefix + t[1] + gitfile[len(t[0]):]
-    raise ValueError, repr(gitfile)
-
-def to_alsa_file2(gitfile, prefix=''):
-    return prefix + 'mirror/' + gitfile
+    return prefix + gitfile
 
 def to_kernel_file(gitfile, prefix=''):
     if gitfile == '/dev/null':
         return '/dev/null'
     if prefix and gitfile.startswith(prefix):
-        gitfile = gitfile[len(prefix):]
-    for t in config.ALSA_RTRANSLATE:
-        if gitfile.startswith(t[0]):
-            return prefix + t[1] + gitfile[len(t[0]):]
-    raise ValueError, repr(gitfile)
+        return gitfile
+    return prefix  + gitfile
 
 def git_repo(repo):
     if repo == '.':

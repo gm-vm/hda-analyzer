@@ -240,6 +240,8 @@ def fft_test(args):
 
   samplerate, data = read_wav(filename, channel)
 
+  samplerate -= 0
+
   windowsize = len(data)
   lowfreq = 200
   highfreq = 6000

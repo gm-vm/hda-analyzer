@@ -117,7 +117,7 @@ def version_sort(tags):
     tags2 = {}
     for tag in tags:
         tag = tag.strip()
-        if tag == "tip":
+        if tag == "tip" or tag == "master":
             continue
         try:
             t = tag.split('.')
@@ -239,14 +239,23 @@ def release1(repo, tag):
         files.append('configure.in')
     elif repo in ['alsa-lib', 'alsa-plugins', 'alsa-utils',
                   'alsa-firmware', 'alsa-oss']:
-        lines = open(config.ROOT + '/' + repo + '/configure.in').readlines()
+        lines = open(config.ROOT + '/' + repo + '/configure.ac').readlines()
         for idx in range(0, len(lines)):
-                if lines[idx].startswith('AM_INIT_AUTOMAKE(%s, ' % repo):
-                        lines[idx] = 'AM_INIT_AUTOMAKE(%s, %s)\n' % (repo, version)
+                if lines[idx].startswith('AC_INIT(%s, ' % repo):
+                        lines[idx] = 'AC_INIT(%s, %s)\n' % (repo, version)
                         print(lines[idx][:-1])
                         break
-        open(config.ROOT + '/' + repo + '/configure.in', "w+").write(''.join(lines))
-        files.append('configure.in')
+        open(config.ROOT + '/' + repo + '/configure.ac', "w+").write(''.join(lines))
+        files.append('configure.ac')
+    elif repo in ['tinycompress']:
+        lines = open(config.ROOT + '/' + repo + '/configure.ac').readlines()
+        for idx in range(0, len(lines)):
+                if lines[idx].startswith('AC_INIT([%s], ' % repo):
+                        lines[idx] = 'AC_INIT([%s], [%s])\n' % (repo, version)
+                        print(lines[idx][:-1])
+                        break
+        open(config.ROOT + '/' + repo + '/configure.ac', "w+").write(''.join(lines))
+        files.append('configure.ac')
     elif repo == 'alsa-tools':
         lines = open(config.ROOT + '/' + repo + '/Makefile').readlines()
         for idx in range(0, len(lines)):
@@ -274,11 +283,12 @@ def release1(repo, tag):
         open(config.ROOT + '/' + repo + '/PKG-INFO', "w+").write(''.join(lines))
         files.append('PKG-INFO')
     os.chdir(config.ROOT + '/' + repo)
-    for file in files:
-        if os.system("git add %s" % file):
-            raise ValueError, "git add %s" % file
-    if os.system('git commit -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % tag):
-        raise ValueError, "git commit"
+    if not repo in ['alsa-ucm-conf', 'alsa-topology-conf']:
+        for file in files:
+            if os.system("git add %s" % file):
+                raise ValueError, "git add %s" % file
+        if os.system('git commit -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % tag):
+            raise ValueError, "git commit"
     if not repo in ['alsa-driver']:
         if os.system('git tag %s -a -m "Release %s\n\nSigned-off-by: Jaroslav Kysela <perex@perex.cz>\n"' % (tag, tag)):
             raise ValueError, "git tag"
@@ -521,7 +531,7 @@ def changes(argv):
 
     def mediawiki_header(fp, title):
             fp.write("""\
-<mediawiki xsi:schemaLocation="http://www.mediawiki.org/xml/export-0.3/ http://www.mediawiki.org/xml/export-0.3.xsd" version="0.3" xml:lang="en">
+<mediawiki version="0.3" xml:lang="en">
 <page>
 <title>%s</title>
 <revision>
@@ -572,7 +582,7 @@ def changes(argv):
                     continue
             tags1 = []
             base = rev2 == 'HEAD' and 'v999.999.999' or rev2
-            if not check_tag(tags, xrev):
+            while not check_tag(tags, xrev):
                     if rev2[0] != 'v':
                             base = 'v9.9.9'
                     elif rev2[-3:-1] == "rc":
@@ -925,11 +935,11 @@ def import_(argv):
 
 def getgitfile(url, file, size=1024):
     from urllib import splithost
-    from httplib import HTTP
-    if not url.startswith('http:'):
+    from httplib import HTTPS
+    if not url.startswith('https:'):
       raise ValueError, "URL %s" % url
-    host, selector = splithost(url[5:])
-    h = HTTP(host)
+    host, selector = splithost(url[6:])
+    h = HTTPS(host)
     h.putrequest('GET', url + '/' + file)
     h.endheaders()
     h.getreply()
@@ -938,7 +948,7 @@ def getgitfile(url, file, size=1024):
     return res
 
 def getorigin(repo = 'alsa-kernel'):
-    origin = getgitfile('http://git.alsa-project.org/http/%s.git' % repo, 'info/refs', size=8192)
+    origin = getgitfile('https://git.alsa-project.org/http/%s.git' % repo, 'info/refs', size=8192)
     for line in origin.splitlines():
         a = line.strip().split('\t')
         if a[1] == 'refs/heads/master':
@@ -1066,139 +1076,121 @@ def kimport(argv=None):
 
 def one(argv=''):
 
-    def filecheck1(file):
+    def filecheck(file):
         return True
         
-    def filecheck2(file):
-        return True
-
-    def fileconv1(file, prefix=''):
+    def fileconv(file, prefix=''):
         if file == '/dev/null':
             return file
         if prefix and file.startswith(prefix):
             file = file[len(prefix):]
+        if file.startswith('mirror/'):
+            file = file[7:]
+        else:
+            file = 'alsa/' + file
         return file
 
-    def fileconv2(file, prefix=''):
-        if file == '/dev/null':
-            return file
-        if prefix and file.startswith(prefix):
-            file = file[len(prefix):]
-        if file.startswith('Documentation/DocBook/alsa-driver-api.tmpl'):
-            pass
-        elif file.startswith('Documentation/'):
-            file = 'Documentation/sound/alsa/' + file[14:]
-        elif file.startswith('include/'):
-            file = 'include/sound/' + file[8:]
-        elif file.startswith('scripts/'):
-            pass
-        elif file.startswith('.'):
-            pass
-        else:
-            file = 'sound/' + file
-        return 'mirror/' + file
+    def is_mirror(l):
+        mirror = alsa = 0
+        for f in l['files']:
+            if f.startswith('mirror/'):
+                mirror += 1
+            else:
+                alsa += 1
+#        if mirror and alsa:
+#            raise ValueError, "ALSA + MIRROR?"
+        return alsa < mirror
 
+    def do_merge(branch, rbranch, l):
+        if not branch is None:
+            if git_system(repo2, "checkout master"):
+                raise ValueError
+            comment = git_popen(repo2, "log --pretty=format:\"%%s\n    %%H\" HEAD..%s" % branch).read(1024*1024)
+            top = "Merge branch '%s'" % branch
+            if comment:
+                comment = top + ":\n\n" + comment
+            else:
+                comment = top
+            comment = comment.replace('"', '\\"').replace('`', '\\`')
+            lines = comment.splitlines()
+            if len(lines) > 500:
+                comment = ''.join(lines[:500])
+                comment += "\n\nAnd more... (truncated)"
+            if git_system(repo2, "merge --no-edit --no-log -m \"%s\" %s" % (comment, branch)):
+                raise ValueError
+        if git_system(repo2, "checkout %s" % rbranch):
+            raise ValueError
+
+    incremental = True
+    incbase = 'v1.0.25'
+    incend = 'HEAD'
     dir = os.path.expanduser('~/alsa/')
     repo1 = 'alsa-driver'
-    repo2 = 'alsa-kmirror'
-    repo3 = 'alsa-driver.new'
-    conv = {repo1:fileconv1, repo2:fileconv2}
-    check = {repo1:filecheck1, repo2:filecheck2}
-    if argv and 'clear' in argv and os.path.exists(dir + repo3):
-        rmtree(dir + repo3)
-    if not os.path.exists(dir + repo3):
-        os.mkdir(dir + repo3)
-        if git_system(repo3, "init"):
+    repo2 = 'alsa-driver.alsa'
+    if not incremental or \
+       (argv and 'clear' in argv and os.path.exists(dir + repo2)):
+        rmtree(dir + repo2)
+    if not os.path.exists(dir + repo2):
+        os.mkdir(dir + repo2)
+        if git_system(repo2, "init"):
             raise ValueError, "git init error"
-    tags1 = version_sort(os.popen("%s tag" % git(repo1)).readlines())
-    tags1.remove('v1.0.2')
-    tags1.remove('v1.0.2b')
-    tags2 = version_sort(os.popen("%s tag" % git(repo2)).readlines())
-    tags1.append('master')
-    tags2.append('master')
-    tags3 = version_sort(os.popen("%s tag" % git(repo3)).readlines())
+        exports = 'export GIT_COMMITER_DATE="Mon Jan  1 00:00:01 1990 +0000" ; '
+        exports += 'export GIT_AUTHOR_DATE="Mon Jan  1 00:00:01 1990 +0000"'
+        for b in ['master', 'mirror', 'build']:
+            if git_system(repo2, "checkout --orphan %s" % b):
+                raise ValueError
+            if git_system(repo2, "commit --allow-empty -m \"root commit\"", exports=exports):
+                raise ValueError
+    tags1 = version_sort(os.popen("%s branch" % git(repo1)).readlines())
     init1 = os.popen("%s log master --pretty=format:%%H  --reverse" % git(repo1)).readline().strip()
-    init2 = os.popen("%s log master --pretty=format:%%H  --reverse" % git(repo2)).readline().strip()
-    if not tags1 or not tags2 or not init1 or not init2:
+    if not tags1 or not init1:
         raise ValueError, "init"
-
-    if tags3:
-        for tag in tags3:
-            tags1.remove(tag)
-            tags2.remove(tag)
+    tags1.append('HEAD')
+    
+    if incremental:
+        prev1 = incbase
+        tags1 = [incend]
+        for b in ['master', 'mirror', 'build']:
+            if git_system(repo2, "checkout %s" % b):
+                raise ValueError
+            if b == 'master':
+                c = 'release/%s' % incbase
+            else:
+                c = b + '/' + incbase
+            if git_system(repo2, "reset --hard %s" % c):
+                raise ValueError
+            if git_system(repo2, "clean -f -d"):
+                raise ValueError
+    else:
+        prev1 = init1
+    abranch = None
+    os.chdir(dir + repo2)
 
     for tag in tags1:
-        if not tag in tags2:
-            raise ValueError, "tag %s is not in %s" % (tag, repo2)           
-    for tag in tags2:
-        if not tag in tags1:
-            raise ValueError, "tag %s is not in %s" % (tag, repo1)
 
-    ptag = None
-    if tags3:
-        ptag = tags3[-1]
-        if git_system(repo3, "reset --hard %s" % ptag):
-            raise ValueError, "git reset tag error"
-
-    for tag in tags1:
-        prev1 = prev2 = ptag
-        if ptag is None:
-            prev1 = init1
-            prev2 = init2
-        ptag = tag[:]
-
-        print prev1, prev2, tag
         log1 = git_read_commits(dir + repo1, prev1, tag, reverse=True)
-        log2 = git_read_commits(dir + repo2, prev2, tag, reverse=True)
         if prev1 == init1:
             l1 = git_read_commits(dir + repo1, prev1, prev1)
             l1[0]['root_flag'] = True
-            l2 = git_read_commits(dir + repo2, prev2, prev2)
-            l2[0]['root_flag'] = True
             log1 = l1 + log1
-            log2 = l2 + log2
 
-        if not log1 and not log2:
+        if not log1:
             continue
 
-        log = []
-        while log1 or log2:
-            if not log1:
-                log.append(log2[0])
-                log2.pop(0)
-                log[-1]['repo'] = repo2
-            elif not log2:
-                log.append(log1[0])
-                log1.pop(0)
-                log[-1]['repo'] = repo1
-            else:
-                if log1[0]['CommitDate'] <= log2[0]['CommitDate']:
-                    log.append(log1[0])
-                    log1.pop(0)
-                    log[-1]['repo'] = repo1
-                else:
-                    log.append(log2[0])
-                    log2.pop(0)
-                    log[-1]['repo'] = repo2
+        for l in log1:
+            mirror = is_mirror(l)
+            branch = mirror and 'mirror' or 'build'
+            if abranch != branch:
+                do_merge(abranch, branch, l)
+                abranch = branch
 
-        for l in log:
-            if l['repo'] == 'alsa-kmirror' and \
-               l['ref'] in ['8ef26bb6279a048d838063a4b740cb716b30c75a',
-                            '6ae95af9a82c9f80a80ddd41a5ca2964a380fb77',
-                            '3cd9d1b408f301cdbf42e94a5cd3c6eb7019b57c',
-                            '60b096ce86d24ae797813dbcc117ca9194f82cca',
-                            '73b89c7c2d4f6f194316bcbac3448ea6e146aeb4',
-                            '88b6b99716dfb5026305f0e9a11f99a650b3e12f']:
-                continue
-            if l['comment'].startswith('Merge branch '):
-                continue
             ok = False
             for a in ('alsatool-abort', 'alsatool-skip'):
                 if os.path.exists(tmpfile(a)):
                     os.remove(tmpfile(a))
             while not ok:
                 try:
-                    try_to_merge(repo3, 'master', l['repo'], l, fileconv=conv[l['repo']], filecheck=check[l['repo']], do_checkout=False)
+                    try_to_merge(repo2, 'master', repo1, l, fileconv=fileconv, filecheck=filecheck, do_checkout=False)
                     ok = True
                 except:
                     print "Unexpected error:", sys.exc_info()[0]
@@ -1208,16 +1200,29 @@ def one(argv=''):
                     print "Type 'touch %s; exit' to abort..." % tmpfile("alsatool-abort")
                     print "Type 'touch %s; exit' to skip the patch..." % tmpfile("alsatool-skip")
                     print "Or make changes and type 'exit' to restart..."
-                    os.chdir(dir + repo3)
+                    os.chdir(dir + repo2)
                     os.system("PS1='alsatool fix [\u@\h \W]\$ ' /bin/bash")
                     if os.path.exists(tmpfile("alsatool-abort")):
                         raise
                     if os.path.exists(tmpfile("alsatool-skip")):
                         print "Skipping..."
                         ok = True
-                    
-        if git_system(repo3, "tag -a %s -m \"Release %s\"" % (tag, tag)):
+
+        do_merge(abranch, 'master', l)
+        abranch = None
+        if tag == 'HEAD':
+            break
+        if git_system(repo2, "tag release/%s" % tag):
             raise ValueError
+        if git_system(repo2, "checkout build"):
+            raise ValueError
+        if git_system(repo2, "tag build/%s" % tag):
+            raise ValueError
+        if git_system(repo2, "checkout mirror"):
+            raise ValueError
+        if git_system(repo2, "tag mirror/%s" % tag):
+            raise ValueError
+        prev1 = tag
 
 def onecheck(argv=''):
     from dircache import listdir
@@ -1316,11 +1321,11 @@ def compile0(repo):
     os.chdir(dir)
     if os.system('rm -rf ' + dir + '/%s*' % package(repo)):
         raise ValueError, "rm -rf"
-    if os.system('LANG=C wget http://www.alsa-project.org/snapshot/?package=%s' % repo):
+    if os.system('LANG=C wget -O %s.tar.bz2 http://www.alsa-project.org/snapshot/?package=%s' % (repo, repo)):
         raise ValueError, "wget"
     filename = ''
     for f in listdir('.'):
-        if f.startswith(package(repo) + '-'):
+        if f.startswith(package(repo) + '.'):
             filename = f
             break
     if not filename:
@@ -1328,12 +1333,13 @@ def compile0(repo):
     print('Found %s...' % filename)
     if os.system('tar xjf %s' % filename):
         raise ValueError, "tar xjf %s" % filename
-    os.chdir(filename[:-8])
+    p = os.popen('tar tjf %s 2> /dev/null | head -1' % filename).read(1024*1024)
+    os.chdir(p.strip())
     
     if not repo in ['alsa-tools', 'alsa-python']:
         args = ''
-        if repo == 'alsa-driver':
-            args = ' --with-kernel=$HOME/alsa/alsa-kernel'
+        #if repo == 'alsa-driver':
+        #    args = ' --with-kernel=$HOME/alsa/alsa-kernel'
         print "configure%s" % args
         if os.system("./configure%s" % args):
             raise ValueError, "configure"
@@ -1348,10 +1354,9 @@ def compile0(repo):
 
 def compile(argv=''):
     repos = selectrepos(argv)
-    if 'alsa' in repos:
-        repos.remove('alsa')
-    if 'alsa-kmirror' in repos:
-	repos.remove('alsa-kmirror')
+    for r in ['alsa', 'alsa-kmirror', 'alsa-ucm-conf', 'alsa-topology-conf']:
+        if r in repos:
+            repos.remove(r)
     for repo in repos:
 	compile0(repo)
 
@@ -1364,7 +1369,7 @@ def dimport(argv=''):
             raise ValueError, "repo syntax error"
         repo = a
         branch = b
-    return driver_merge('alsa-driver', 'master', repo, branch)
+    return driver_merge('alsa-driver', 'mirror', repo, branch)
 
 def ddiff(argv=''):
     repo = 'alsa-kernel'
@@ -1375,7 +1380,7 @@ def ddiff(argv=''):
             raise ValueError, "repo syntax error"
         repo = a
         branch = b
-    return compare_trees('alsa-driver.new', 'master', repo, branch)
+    return compare_trees('alsa-driver', 'mirror', repo, branch)
 
 def kmerge(argv=''):
     os.chdir(config.ROOT + '/alsa-kernel')
@@ -1405,12 +1410,57 @@ def kmerge(argv=''):
             raise ValueError, ' pull ' + url + ' ' + branch
         if os.system(git0 + ' branch -f ' + lbranch + ' ' + ref):
             raise ValueError, ' branch ' + lbranch + ' ' + ref
-        if os.system(git0 + ' push -f origin ' + lbranch):
             raise ValueError, ' push -f origin ' + lbranch
         changes += 1
     if changes > 0:
         if os.system(git0 + ' push -f origin alsamerge/master'):
             raise ValueError, ' push -f origin alsamerge/master'
+
+def replace0(dir, f, t):
+    from dircache import listdir
+
+    cnt = 0
+    for f0 in listdir(dir):
+        if f0[0] == '.': continue
+        if f0.endswith('~'): continue
+        if f0.endswith('.lo'): continue
+        if f0.endswith('.o'): continue
+        filename = dir + '/' + f0
+        if os.path.islink(filename):
+            continue
+        if os.path.isdir(filename):
+            cnt += replace0(filename, f, t)
+            continue
+        fp = open(filename)
+        b = fp.read(10*1024*1024)
+        fp.close()
+        c = b.replace(f, t)
+        if b != c:
+            cnt += 1
+            fp = open(filename, 'w+')
+            fp.write(c)
+            fp.close()
+    return cnt
+
+def replace(argv=None):
+    if not argv[0].startswith('--from='):
+        raise ValueError, '  replace expect --from=""'
+    f = argv[0][7:]
+    if not argv[1].startswith('--to='):
+        raise ValueError, '  replace expect --to=""'
+    t = argv[1][5:]
+    print('Replacing:')
+    print('  from: "%s"' % f)
+    print('  to:   "%s"' % t)
+    repos = selectrepos(argv[2:])
+    cnt = 0
+    for repo in repos:
+        cnt += replace0(config.ROOT + '/' + repo, f, t)
+    if cnt > 0:
+        print('Replaces in %d files.' % cnt)
+    else:
+        print('Not found') 
+        
 
 def background(argv=''):
     global BACKGROUND
@@ -1444,7 +1494,8 @@ CMDS=[
     ['kmerge', kmerge, '', 'Merge trees for all ALSA developers'],
     ['one', one, '', 'Merge alsa-kmirror and alsa-driver trees to one alsa-driver tree'],
     ['onecheck', onecheck, '', 'Compare integrity of the one alsa-driver tree'],
-    ['oneretag', oneretag, '', 'Retag the one alsa-driver tree']
+    ['oneretag', oneretag, '', 'Retag the one alsa-driver tree'],
+    ['replace', replace, '', 'Replace string in selected repositories'],
 ]
  
 def main():

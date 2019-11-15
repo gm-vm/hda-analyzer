@@ -11,8 +11,8 @@ GERRORS = 0
 GERRORSA = []
 TMPDIR = '/dev/shm/alsatool'
 SMTP_SERVER = 'localhost'
-GIT_KERNEL_MERGE = 'v3.3'
-GIT_DRIVER_MERGE = 'v1.0.24'
+GIT_KERNEL_MERGE = 'v4.8'
+GIT_DRIVER_MERGE = 'mirror/v1.0.25'
 GIT_MERGE_REPOS = [
         ('git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux-2.6.git', 'master', 'linux-2.6', 'http://www.kernel.org/pub/scm/linux/kernel/git/torvalds/linux-2.6.git'),
         ('git://git.alsa-project.org/alsa-kernel.git', 'fixes', 'perex-fixes', 'http://git.alsa-project.org/http/alsa-kernel.git'),
@@ -22,14 +22,16 @@ GIT_MERGE_REPOS = [
         ('git://git.kernel.org/pub/scm/linux/kernel/git/tiwai/sound-2.6.git', 'topic/asoc', 'tiwai-topic-asoc', 'http://www.kernel.org/pub/scm/linux/kernel/git/tiwai/sound-2.6.git')
 ]
 REPOSITORIES = [
-        'alsa', 'alsa-driver', 'alsa-lib', 'alsa-utils',
+        'alsa', 'alsa-lib', 'alsa-utils',
         'alsa-tools', 'alsa-firmware', 'alsa-oss', 'alsa-plugins',
-        'alsa-python'
+        'alsa-python', 'tinycompress', 'alsa-ucm-conf', 'alsa-topology-conf'
 ]        
 ALSA_FILES = (
+        'Documentation/devicetree/bindings/sound/',
 	'Documentation/sound/alsa/',
 	'sound/',
-	'include/sound/'
+	'include/sound/',
+	'include/uapi/sound/'
 )
 NOT_ALSA_FILES = (
 	'sound/oss/',
