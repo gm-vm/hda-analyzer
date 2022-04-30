@@ -251,11 +251,11 @@ class Monitor(gtk.Window):
       while 1:
         try:
           data = source.read(128)
-        except IOError, e:
+        except IOError as e:
           if e.errno == EAGAIN:
             self.show_record_vols()
             break
-          raise IOError, e
+          raise IOError(e)
         self.record_data += data
         self.record_count += len(data)
         pos = self.record_data.find('\n')

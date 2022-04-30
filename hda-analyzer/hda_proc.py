@@ -31,7 +31,7 @@ def DecodeProcFile(proc_file):
       p = None
       try:
         from gzip import GzipFile
-        from StringIO import StringIO
+        from io import StringIO
         s = StringIO(proc_file)
         gz = GzipFile(mode='r', fileobj=s)
         p = gz.read(1024*1024)
@@ -140,7 +140,7 @@ class HDABaseProc:
     self.wrongfile('integer decode %s (%s)' % (repr(str), repr(prefix)))
 
   def wrongfile(self, msg=''):
-    raise ValueError, "wrong proc file format (%s)" % msg
+    raise ValueError("wrong proc file format (%s)" % msg)
 
 class HDApcmDevice:
 
@@ -216,7 +216,7 @@ class ProcNode(HDABaseProc):
       idx = param & (1<<13) and 1 or 0
       val = param & 0x7f
       if val >= len(self.amp_vals[dir]):
-        print "AMP index out of range (%s >= %s)" % (val, len(self.amp_vals[dir]))
+        print("AMP index out of range (%s >= %s)" % (val, len(self.amp_vals[dir])))
         while val >= len(self.amp_vals[dir]):
           self.amp_vals[dir].append([128, 128])
       return self.amp_vals[dir][val][idx]
@@ -239,14 +239,14 @@ class ProcNode(HDABaseProc):
     elif verb in SET_VERBS:
       self.verbs[SET_VERBS[verb]] = param
       return param
-    raise ValueError, "unimplemented node rw (0x%x, 0x%x, 0x%x)" % (self.nid, verb, param)
+    raise ValueError("unimplemented node rw (0x%x, 0x%x, 0x%x)" % (self.nid, verb, param))
 
   def param_read(self, param):
     if param in self.params:
       return self.params[param]
     elif param == PARAMS['CONNLIST_LEN']:
       return len(self.connections) + (1 << 7)	# use long format
-    raise ValueError, "unimplemented node param read (0x%x, 0x%x)" % (self.nid, param)
+    raise ValueError("unimplemented node param read (0x%x, 0x%x)" % (self.nid, param))
 
   def add_verb(self, verb, param, do_or=False):
     if do_or and verb in self.verbs:
@@ -573,7 +573,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
     idx = 0
     idx, self.proc_codec_id = lookfor(idx, 'Codec: ')
     if not self.proc_codec_id:
-      print "Proc Text Contents is not valid"
+      print("Proc Text Contents is not valid")
       return
     idx, tmp = lookforint(idx, 'Address: ')
     self.device = tmp # really?
@@ -644,11 +644,11 @@ class HDACodecProc(HDACodec, HDABaseProc):
       return
     line = lines[idx].strip()
     if line == 'Invalid AFG subtree':
-      print "Invalid AFG subtree for codec %s?" % self.proc_codec_id
+      print("Invalid AFG subtree for codec %s?" % self.proc_codec_id)
       return
     while line.startswith('Power-Map: ') or \
           line.startswith('Analog Loopback: '):
-      print 'Sigmatel specific "%s" verb ignored for the moment' % line
+      print('Sigmatel specific "%s" verb ignored for the moment' % line)
       idx += 1
       line = lines[idx].strip()
     node = None
@@ -775,7 +775,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
         return 0
       node = self.proc_nids[nid]
       return node.param_read(param)
-    raise ValueError, "unimplemented param_read(0x%x, 0x%x)" % (nid, param)
+    raise ValueError("unimplemented param_read(0x%x, 0x%x)" % (nid, param))
 
   def get_sub_nodes(self, nid):
     if nid == AC_NODE_ROOT:
@@ -786,11 +786,11 @@ class HDACodecProc(HDACodec, HDABaseProc):
       return 1, self.proc_afg
     elif nid == self.proc_afg:
       if self.proc_nids:
-        return len(self.proc_nids), self.proc_nids.keys()[0]
+        return len(self.proc_nids), list(self.proc_nids.keys())[0]
       return 0, 0
     elif nid is None:
       return 0, 0
-    raise ValueError, "unimplemented get_sub_nodes(0x%x)" % nid
+    raise ValueError("unimplemented get_sub_nodes(0x%x)" % nid)
 
   def get_wcap(self, nid):
     node = self.proc_nids[nid]
@@ -801,7 +801,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
 
   def rw(self, nid, verb, param):
     if nid == self.proc_afg:
-      for i, j in GPIO_IDS.iteritems():
+      for i, j in GPIO_IDS.items():
         if verb == j[0] or verb == j[1]:
           if i == 'direction':
             i = 'dir'
@@ -813,7 +813,7 @@ class HDACodecProc(HDACodec, HDABaseProc):
         return 0
       node = self.proc_nids[nid]
       return node.rw(verb, param)
-    raise ValueError, "unimplemented rw(0x%x, 0x%x, 0x%x)" % (nid, verb, param)
+    raise ValueError("unimplemented rw(0x%x, 0x%x, 0x%x)" % (nid, verb, param))
 
   def dump_node_extra(self, node):
     if not node or not node.nid in self.proc_nids:
@@ -844,7 +844,7 @@ def dotest1(base):
     if os.path.isdir(file):
       dotest1(file)
     else:
-      print file
+      print(file)
       file = DecodeProcFile(file)
       file = DecodeAlsaInfoFile(file)
       for a in file:
@@ -854,7 +854,7 @@ def dotest1(base):
 def dotest():
   import sys
   if len(sys.argv) < 2:
-    raise ValueError, "Specify directory with codec dumps"
+    raise ValueError("Specify directory with codec dumps")
   dotest1(sys.argv[1])
 
 if __name__ == '__main__':

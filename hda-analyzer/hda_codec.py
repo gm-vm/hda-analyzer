@@ -35,7 +35,7 @@ AC_NODE_ROOT	= 0
 (
   HDA_INPUT,
   HDA_OUTPUT
-) = range(2)
+) = list(range(2))
 
 VERBS = {
   'GET_STREAM_FORMAT':		0x0a00,
@@ -278,7 +278,7 @@ class HDAAmpCaps:
     if val > self.nsteps:
       db = off + self.nsteps * range
       if val != 0 or self.nsteps != 0:
-        print "val > nsteps? for nid 0x%02x" % self.nid, val, self.nsteps
+        print("val > nsteps? for nid 0x%02x" % self.nid, val, self.nsteps)
     else:
       db = off + val * range
     return db
@@ -868,7 +868,7 @@ class HDANode:
         except:
           e = None
       if not e:
-        print "Control ID not found:", ctl.dump_extra().strip().lstrip()
+        print("Control ID not found:", ctl.dump_extra().strip().lstrip())
         continue
       e.hdactl = ctl
       res.append(e)
@@ -885,7 +885,7 @@ class HDANode:
       idx = 0
       if dst_node.amp_vals_in.indices == dst_node.connections:
         if not self.nid in dst_node.connections:
-          raise ValueError, "nid 0x%02x is not connected to nid 0x%02x (%s, %s)" % (dst_node.nid, self.nid, repr(self.connections), repr(dst_node.connections))
+          raise ValueError("nid 0x%02x is not connected to nid 0x%02x (%s, %s)" % (dst_node.nid, self.nid, repr(self.connections), repr(dst_node.connections)))
         idx = dst_node.connections.index(self.nid)
       res.append(dst_node.amp_vals_in.get_val_str(idx))
     else:
@@ -910,7 +910,7 @@ class HDANode:
       idx = 0
       if dst_node.amp_vals_in.indices == dst_node.connections:
         if not self.nid in dst_node.connections:
-          raise ValueError, "nid 0x%02x is not connected to nid 0x%02x (%s, %s)" % (dst_node.nid, self.nid, repr(self.connections), repr(dst_node.connections))
+          raise ValueError("nid 0x%02x is not connected to nid 0x%02x (%s, %s)" % (dst_node.nid, self.nid, repr(self.connections), repr(dst_node.connections)))
         idx = dst_node.connections.index(self.nid)
       vals = dst_node.amp_vals_in.get_val_db(idx)
       for idx in range(len(vals)):
@@ -1032,11 +1032,11 @@ class HDACodec:
     res = ioctl(self.fd, IOCTL_INFO, info)
     name = struct.unpack('Ii64s80si64s', res)[3]
     if not name.startswith('HDA Codec'):
-      raise IOError, "unknown HDA hwdep interface"
+      raise IOError("unknown HDA hwdep interface")
     res = ioctl(self.fd, IOCTL_PVERSION, struct.pack('I', 0))
     self.version = struct.unpack('I', res)
     if self.version < 0x00010000:	# 1.0.0
-      raise IOError, "unknown HDA hwdep version"
+      raise IOError("unknown HDA hwdep version")
     self.mixer = AlsaMixer(self.card, ctl_fd=ctl_fd)
     self.parse_proc()
 
@@ -1097,7 +1097,7 @@ class HDACodec:
       parm >>= shift
       if range_val:
         if not prev_nid or prev_nid >= val:
-          raise IOError, "invalid dep_range_val 0x%x:0x%x\n" % (prev_nid, val)
+          raise IOError("invalid dep_range_val 0x%x:0x%x\n" % (prev_nid, val))
         n = prev_nid + 1
         while n <= val:
           res.append(n)
@@ -1140,7 +1140,7 @@ class HDACodec:
       self.proc_codec = HDACodecProc(self.card, self.device, file)
     else:
       self.proc_codec = None
-      print "Unable to find proc file '%s'" % file
+      print("Unable to find proc file '%s'" % file)
 
   def analyze(self):
     self.afg = None
@@ -1585,7 +1585,7 @@ class HDACodec:
             res[idx+1][x] = nid
             return True
       elif y == len(res)-1:
-        for idx in reversed(range(len(res)-2)):
+        for idx in reversed(list(range(len(res)-2))):
           if res[idx+1][x] is None:
             res[idx+1][x] = nid
             return True
@@ -1736,21 +1736,21 @@ class HDACodec:
         nid = res[y][x]
         if not nid is None:
           if nid in check:
-            raise ValueError, "double nid in graph matrix"
+            raise ValueError("double nid in graph matrix")
           if not nid in self.nodes:
-            raise ValueError, "unknown nid in graph matrix"
+            raise ValueError("unknown nid in graph matrix")
           check.append(nid)
     if len(check) != len(self.nodes):
-      raise ValueError, "not all nids in graph matrix"
+      raise ValueError("not all nids in graph matrix")
     # do addition dump
     if dump:
-      print "****", len(self.nodes)
+      print("****", len(self.nodes))
       for nodes in res:
         str = ''
         for node2 in nodes:
           str += node2 is None and '--  ' or '%02x  ' % node2
-        print str
-      print "****"
+        print(str)
+      print("****")
     return res
 
 class HDA_Exporter_pyscript:
@@ -1767,7 +1767,7 @@ class HDA_Exporter_pyscript:
     
   def rw(self, old, nid, verb, param):
     if verb & 0x0800:
-      raise ValueError, "read: nid=0x%x, verb=0x%x, param=0x%x" % (nid, verb, param)
+      raise ValueError("read: nid=0x%x, verb=0x%x, param=0x%x" % (nid, verb, param))
     #print "old = 0x%x, nid = 0x%x, verb = 0x%x, param = 0x%x" % (old, nid, verb, param)
     verb |= param >> 8
     if old:
@@ -1781,7 +1781,7 @@ class HDA_Exporter_pyscript:
 
   def text(self, codec):
     text = ''
-    nids = self.new_verbs.keys()[:]
+    nids = list(self.new_verbs.keys())[:]
     for nid in nids:
       for verb in self.new_verbs[nid]:
         old = self.old_verbs[nid][verb]
@@ -1789,7 +1789,7 @@ class HDA_Exporter_pyscript:
         if old != new:
           verb1 = verb & ~(new >> 8)
           pack = (nid << 24) | (verb << 8) | new
-          for k, v in VERBS.items():
+          for k, v in list(VERBS.items()):
             if v == verb1:
               txt = k
               break
@@ -1817,18 +1817,18 @@ IOCTL_VERB_WRITE = __ioctl_val(0xc0084811)
 
 def set(nid, verb, param):
   verb = (nid << 24) | (verb << 8) | param
-  res = ioctl(FD, IOCTL_VERB_WRITE, struct.pack('II', verb, 0))  
+  res = ioctl(FD, IOCTL_VERB_WRITE, struct.pack('II', verb, 0))
 
 FD = os.open("%s", os.O_RDONLY)
-info = struct.pack('Ii64s80si64s', 0, 0, '', '', 0, '')
+info = struct.pack('Ii64s80si64s', 0, 0, b'', b'', 0, b'')
 res = ioctl(FD, IOCTL_INFO, info)
 name = struct.unpack('Ii64s80si64s', res)[3]
-if not name.startswith('HDA Codec'):
-  raise IOError, "unknown HDA hwdep interface"
+if not name.startswith(b'HDA Codec'):
+  raise IOError("unknown HDA hwdep interface")
 res = ioctl(FD, IOCTL_PVERSION, struct.pack('I', 0))
 version = struct.unpack('I', res)
-if version < 0x00010000:	# 1.0.0
-  raise IOError, "unknown HDA hwdep version"
+if version[0] < 0x00010000:	# 1.0.0
+  raise IOError("unknown HDA hwdep version")
 
 # initialization sequence starts here...
 
@@ -1844,7 +1844,7 @@ def HDA_card_list():
     if name.startswith('controlC'):
       try:
         fd = os.open("/dev/snd/%s" % name, os.O_RDONLY)
-      except OSError, msg:
+      except OSError as msg:
         continue
       info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, '', '', '', '', '', '', '')
       res = ioctl(fd, CTL_IOCTL_CARD_INFO, info)
@@ -1859,8 +1859,8 @@ def HDA_card_list():
 if __name__ == '__main__':
   v = HDACodec()
   v.analyze()
-  print "vendor_id = 0x%x, subsystem_id = 0x%x, revision_id = 0x%x" % (v.vendor_id, v.subsystem_id, v.revision_id)
-  print "afg = %s, mfg = %s" % (v.afg and "0x%x" % v.afg or 'None', v.mfg and "0x%x" % v.mfg or 'None')
-  print
-  print
-  print v.dump()[:-1]
+  print("vendor_id = 0x%x, subsystem_id = 0x%x, revision_id = 0x%x" % (v.vendor_id, v.subsystem_id, v.revision_id))
+  print("afg = %s, mfg = %s" % (v.afg and "0x%x" % v.afg or 'None', v.mfg and "0x%x" % v.mfg or 'None'))
+  print()
+  print()
+  print(v.dump()[:-1])

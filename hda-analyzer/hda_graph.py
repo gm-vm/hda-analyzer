@@ -273,26 +273,26 @@ class Route:
     
     possible = []
     startx = posx >= dposx and posx - extra or posx + width
-    xrange = range(5, extra-1, 5)
+    xrange = list(range(5, extra-1, 5))
     if posx >= dposx:
       xrange.reverse()
-      a = range(width+extra+5, width+extra*2-1, 5)
+      a = list(range(width+extra+5, width+extra*2-1, 5))
       a.reverse()
       xrange = xrange + a
       for i in range(2, 10):
-        a = range(width*i+extra*i+5, width*i+extra*(i+1)-1, 5)
+        a = list(range(width*i+extra*i+5, width*i+extra*(i+1)-1, 5))
         a.reverse()
         xrange = xrange + a
     else:
-      xrange += range(width+extra+5, width+extra*2-1, 5)
+      xrange += list(range(width+extra+5, width+extra*2-1, 5))
       for i in range(2, 10):
-        xrange += range(width*i+extra*i+5, width*i+extra*(i+1)-1, 5)
+        xrange += list(range(width*i+extra*i+5, width*i+extra*(i+1)-1, 5))
     for j in xrange:
       possible.append([startx + j, posy + height + 5,
                        startx + j, dposy + height + 5])
     sel = self.select_line(routes, None, possible)
     if not sel:
-      raise ValueError, "unable to route"
+      raise ValueError("unable to route")
 
     self.lines.append(sel)
 
@@ -312,9 +312,9 @@ class Route:
     for tryit in range(3):
       possible = []
       fixup = sel[0] > posx and -1 or 1
-      r = range(tryit*extra, (tryit+1)*extra-5-1, 5)
+      r = list(range(tryit*extra, (tryit+1)*extra-5-1, 5))
       if tryit == 2:
-        r = range(-height-extra+5, -height-5, 5)
+        r = list(range(-height-extra+5, -height-5, 5))
         r.reverse()
       x1 = x + 5 + fixup
       x2 = sel[0] - fixup
@@ -343,7 +343,7 @@ class Route:
           break
     if tryit >= 0:
       self.wronglines.append([x+5, y, sel[0], sel[1]])
-      print "[1] displaced route 0x%x->0x%x %s %s" % (self.src.node.nid, self.dst.node.nid, repr(self.lines[-1]), repr(sel))
+      print("[1] displaced route 0x%x->0x%x %s %s" % (self.src.node.nid, self.dst.node.nid, repr(self.lines[-1]), repr(sel)))
       res = False
 
     x = dposx
@@ -351,9 +351,9 @@ class Route:
     for tryit in range(3):
       possible = []
       fixup = sel[2] > posx and -1 or 1
-      r = range(tryit * extra, (tryit+1)*extra-5-1, 5)
+      r = list(range(tryit * extra, (tryit+1)*extra-5-1, 5))
       if tryit == 2:
-        r = range(-height-extra+5, -height-5, 5)
+        r = list(range(-height-extra+5, -height-5, 5))
         r.reverse()
       sub = width/2
       x1 = x + sub + fixup
@@ -382,7 +382,7 @@ class Route:
           break
     if tryit >= 0:
       self.wronglines.append([x+5, y, sel[2], sel[3]])
-      print "[2] displaced route 0x%x->0x%x %s %s" % (self.src.node.nid, self.dst.node.nid, repr(self.lines[-1]), repr(sel))
+      print("[2] displaced route 0x%x->0x%x %s %s" % (self.src.node.nid, self.dst.node.nid, repr(self.lines[-1]), repr(sel)))
       res = False
       
     return res
@@ -473,7 +473,7 @@ class CodecGraphLayout(gtk.Layout):
         ok = True
         break
     if not ok:
-      print "Not all routes are placed correctly!!!"
+      print("Not all routes are placed correctly!!!")
 
   def __destroy(self, widget):
     if self.popup_win:

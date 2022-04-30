@@ -174,7 +174,7 @@ class AlsaMixerElem:
       startoff += 4
     res = ioctl(self.mixer.fd, CTL_IOCTL_ELEM_READ, bin)
     if self.type == CTL_ELEM_TYPE_BOOLEAN:
-      return map(lambda x: x != 0, struct.unpack("l"*self.count, res[startoff:startoff+self.count*LONGSIZE]))
+      return [x != 0 for x in struct.unpack("l"*self.count, res[startoff:startoff+self.count*LONGSIZE])]
     elif self.type == CTL_ELEM_TYPE_INTEGER:
       return struct.unpack("l"*self.count, res[startoff:startoff+self.count*LONGSIZE])
     elif self.type == CTL_ELEM_TYPE_INTEGER64:
@@ -184,7 +184,7 @@ class AlsaMixerElem:
     elif self.type == CTL_ELEM_TYPE_BYTES:
       return res[startoff:startoff+self.count]
     else:
-      raise ValueError, "Unsupported type %s" % CTL_ELEM_RTYPEs[self.type]
+      raise ValueError("Unsupported type %s" % CTL_ELEM_RTYPEs[self.type])
 
   def get_text_info(self, idx=None):
     res = self.id.get_text_info() + '\n'
@@ -212,6 +212,6 @@ class AlsaMixer:
 if __name__ == '__main__':
   mixer = AlsaMixer(0)
   elem = AlsaMixerElem(mixer, AlsaMixerElemId(name="Mic Boost"))
-  print elem.read()
+  print(elem.read())
   elem = AlsaMixerElem(mixer, AlsaMixerElemId(name="Capture Volume"))
-  print elem.read()
+  print(elem.read())
