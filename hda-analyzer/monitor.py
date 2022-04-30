@@ -12,9 +12,9 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 
-import gobject
-import gtk
-import pango
+from gi.repository import GObject as gobject
+from gi.repository import Gtk as gtk
+from gi.repository import Pango as pango
 from errno import EAGAIN
 from subprocess import Popen, PIPE, STDOUT
 from fcntl import fcntl, F_SETFL, F_GETFL
@@ -56,13 +56,13 @@ class Monitor(gtk.Window):
     self.set_default_size(600, 400)
     self.set_title(self.__class__.__name__)
     self.set_border_width(10)
-    vbox = gtk.VBox(False, 0)
+    vbox = gtk.Box.new(gtk.Orientation.VERTICAL, 0)
     text_view = gtk.TextView()
     fontName = pango.FontDescription("Misc Fixed,Courier 10")
-    text_view.modify_font(fontName)
+    text_view.override_font(fontName)
     text_view.set_border_width(4)
     text_view.set_size_request(580, 350)
-    buffer = gtk.TextBuffer(None)
+    buffer = gtk.TextBuffer()
     self.info_buffer = buffer
     iter = buffer.get_iter_at_offset(0)
     buffer.insert(iter, 'Please, select channel to play or number channels to record...')
@@ -74,24 +74,24 @@ class Monitor(gtk.Window):
     vbox.pack_start(self.statusbar, True, False)
     separator = gtk.HSeparator()
     vbox.pack_start(separator, expand=False)
-    frame = gtk.Frame('Playback')
+    frame = gtk.Frame.new('Playback')
     frame.set_border_width(4)
-    hbox = gtk.HBox(False, 0)
+    hbox = gtk.Box.new(gtk.Orientation.HORIZONTAL, 0)
     hbox.set_border_width(4)
     idx = 0
     for name in CHANNELS:
-      button = gtk.Button(name)
+      button = gtk.Button.new_with_label(name)
       button.connect("clicked", self.__channel_change, idx)
       hbox.pack_start(button, False, False)
       idx += 1
     frame.add(hbox)
     vbox.pack_start(frame, False, False)
-    frame = gtk.Frame('Capture')
+    frame = gtk.Frame.new('Capture')
     frame.set_border_width(4)
-    hbox = gtk.HBox(False, 0)
+    hbox = gtk.Box.new(gtk.Orientation.HORIZONTAL, 0)
     hbox.set_border_width(4)
     for idx in [2, 4, 6, 8]:
-      button = gtk.Button("%s channels" % idx)
+      button = gtk.Button.new_with_label("%s channels" % idx)
       button.connect("clicked", self.__channels_change, idx)
       hbox.pack_start(button, False, False)
       idx += 1

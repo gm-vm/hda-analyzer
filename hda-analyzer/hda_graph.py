@@ -12,10 +12,9 @@
 #   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #   GNU General Public License for more details.
 
-import gobject
-import gtk
-from gtk import gdk
-import pango
+from gi.repository import GObject as gobject
+from gi.repository import Gtk as gtk
+from gi.repository import Gdk as gdk
 import cairo
 from hda_guilib import *
 
@@ -331,7 +330,7 @@ class Route:
         sel1[0] -= fixup + sub
         sel1[2] += fixup
         possible = []
-        for j in range(0, width/2-10, 5):
+        for j in range(0, (width // 2)-10, 5):
           possible.append([sel1[0]+j, y, sel1[0]+j, sel1[1]])
         sel2 = self.select_line(routes, nodes, possible)
         if sel2:
@@ -370,7 +369,7 @@ class Route:
         sel1[0] -= fixup + sub
         sel1[2] += fixup
         possible = []
-        for j in range(0, width/2-10, 5):
+        for j in range(0, (width // 2)-10, 5):
           possible.append([sel1[0]+j, y, sel1[0]+j, sel1[1]])
         sel2 = self.select_line(routes, nodes, possible)
         if sel2:
@@ -442,13 +441,13 @@ class Route:
 
 class CodecGraphLayout(gtk.Layout):
 
-  def __init__(self, adj1, adj2, codec, mytitle, statusbar):
-    gtk.Layout.__init__(self, adj1, adj2)
+  def __init__(self, codec, mytitle, statusbar):
+    gtk.Layout.__init__(self)
     self.set_events(0)
-    self.add_events(gtk.gdk.EXPOSURE_MASK | gtk.gdk.POINTER_MOTION_MASK |
-                    gtk.gdk.BUTTON_PRESS_MASK | gtk.gdk.BUTTON_RELEASE_MASK |
-                    gtk.gdk.LEAVE_NOTIFY_MASK | gtk.gdk.SCROLL_MASK)
-    self.expose_handler = self.connect("expose-event", self.expose)
+    self.add_events(gdk.EventMask.EXPOSURE_MASK | gdk.EventMask.POINTER_MOTION_MASK |
+                    gdk.EventMask.BUTTON_PRESS_MASK | gdk.EventMask.BUTTON_RELEASE_MASK |
+                    gdk.EventMask.LEAVE_NOTIFY_MASK | gdk.EventMask.SCROLL_MASK)
+    #self.expose_handler = self.connect("expose-event", self.expose)
     self.click_handler = self.connect("button-press-event", self.button_click)
     self.release_handler = self.connect("button-release-event", self.button_release)
     self.motion_handler = self.connect("motion-notify-event", self.mouse_move)
@@ -646,14 +645,14 @@ class CodecGraphLayout(gtk.Layout):
         return route
 
   def show_popup(self, event):
-    screen_width = gtk.gdk.screen_width()
-    screen_height = gtk.gdk.screen_height()
+    screen_width = gdk.Screen.get_default().get_width()
+    screen_height = gdk.Screen.get_default().get_height()
 
     if self.popup_win:
       self.popup_win.destroy()
-    self.popup_win = gtk.Window(gtk.WINDOW_POPUP)
-    label = gtk.Label()
-    label.modify_font(get_fixed_font())
+    self.popup_win = gtk.Window(gtk.WindowType.POPUP)
+    label = gtk.Label.new()
+    label.override_font(get_fixed_font())
     label.set_text(self.popup)
     self.popup_win.add(label)
     self.popup_win.move(screen_width + 10, screen_height + 10)
@@ -770,15 +769,15 @@ class CodecGraphLayout(gtk.Layout):
   def button_click(self, widget, event):
     if event.button != 3:
       if event.button == 8:
-        self.scroll_me(self, DummyScrollEvent(gtk.gdk.SCROLL_LEFT))
+        self.scroll_me(self, DummyScrollEvent(gdk.ScrollDirection.LEFT))
       elif event.button == 9:
-        self.scroll_me(self, DummyScrollEvent(gtk.gdk.SCROLL_RIGHT))
+        self.scroll_me(self, DummyScrollEvent(gdk.ScrollDirection.RIGHT))
       return False
     node, what = self.find_node(event)
     m = None
     if node:
       m = gtk.Menu()
-      i = gtk.MenuItem("Open")
+      i = gtk.MenuItem.new_with_label("Open")
       i.connect("activate", self.open_node, node)
       i.show()
       m.append(i)
@@ -795,16 +794,16 @@ class CodecGraphLayout(gtk.Layout):
         if routes:
           i = None
           if len(routes) == 1:
-            i = gtk.MenuItem(text + ' ' + routes[0].longdesc())
+            i = gtk.MenuItem.new_with_label(text + ' ' + routes[0].longdesc())
             i.connect("activate", self.mark_route, routes[0], "mark", True)
           else:
             menu = gtk.Menu()
             for route in routes:
-              i = gtk.MenuItem(route.longdesc())
+              i = gtk.MenuItem.new_with_label(route.longdesc())
               i.connect("activate", self.mark_route, route, "mark", True)
               i.show()
               menu.append(i)
-            i = gtk.MenuItem(text)
+            i = gtk.MenuItem.new_with_label(text)
             i.set_submenu(menu)
           if i:
             i.show()
@@ -822,33 +821,33 @@ class CodecGraphLayout(gtk.Layout):
         if routes:
           i = None
           if len(routes) == 1:
-            i = gtk.MenuItem(text + ' ' + routes[0].longdesc())
+            i = gtk.MenuItem.new_with_label(text + ' ' + routes[0].longdesc())
             i.connect("activate", self.mark_route, routes[0], "mark", False)
           else:
             menu = gtk.Menu()
             for route in routes:
-              i = gtk.MenuItem(route.longdesc())
+              i = gtk.MenuItem.new_with_label(route.longdesc())
               i.connect("activate", self.mark_route, route, "mark", False)
               i.show()
               menu.append(i)
-            i = gtk.MenuItem(text)
+            i = gtk.MenuItem.new_with_label(text)
             i.set_submenu(menu)
           if i:
             i.show()
             m.append(i)
       if not self.startnode:
-        i = gtk.MenuItem("Mark as start point")
+        i = gtk.MenuItem.new_with_label("Mark as start point")
         i.connect("activate", self.mark_it, node, "start", True)
       else:
-        i = gtk.MenuItem("Clear start point")
+        i = gtk.MenuItem.new_with_label("Clear start point")
         i.connect("activate", self.mark_it, None, "start", False)
       i.show()
       m.append(i)
       if not self.endnode:
-        i = gtk.MenuItem("Mark as finish point")
+        i = gtk.MenuItem.new_with_label("Mark as finish point")
         i.connect("activate", self.mark_it, node, "end", True)
       else:
-        i = gtk.MenuItem("Clear finish point")
+        i = gtk.MenuItem.new_with_label("Clear finish point")
         i.connect("activate", self.mark_it, None, "end", False)
       i.show()
       m.append(i)
@@ -857,10 +856,10 @@ class CodecGraphLayout(gtk.Layout):
       if route:
         m = gtk.Menu()
         if not route.marked:
-          i = gtk.MenuItem("Mark selected route %s" % route.shortdesc())
+          i = gtk.MenuItem.new_with_label("Mark selected route %s" % route.shortdesc())
           i.connect("activate", self.mark_route, route, "mark", True)
         else:
-          i = gtk.MenuItem("Clear selected route %s" % route.shortdesc())
+          i = gtk.MenuItem.new_with_label("Clear selected route %s" % route.shortdesc())
           i.connect("activate", self.mark_route, route, "mark", False)
         i.show()
         m.append(i)
@@ -872,16 +871,16 @@ class CodecGraphLayout(gtk.Layout):
     pass
 
   def scroll_me(self, widget, event):
-    if event.direction == gtk.gdk.SCROLL_UP:
+    if event.direction == gdk.ScrollDirection.UP:
       adj = self.get_vadjustment()
       adj.set_value(adj.get_value()-40)
-    elif event.direction == gtk.gdk.SCROLL_DOWN:
+    elif event.direction == gdk.ScrollDirection.DOWN:
       adj = self.get_vadjustment()
       adj.set_value(adj.get_value()+40)
-    elif event.direction == gtk.gdk.SCROLL_LEFT:
+    elif event.direction == gdk.ScrollDirection.LEFT:
       adj = self.get_hadjustment()
       adj.set_value(adj.get_value()-40)
-    elif event.direction == gtk.gdk.SCROLL_RIGHT:
+    elif event.direction == gdk.ScrollDirection.RIGHT:
       adj = self.get_hadjustment()
       adj.set_value(adj.get_value()+40)
 
@@ -901,21 +900,21 @@ class CodecGraph(gtk.Window):
     self.add(table)
 
     statusbar = gtk.Statusbar()
-    self.layout = CodecGraphLayout(None, None, codec, self.get_title(), statusbar)
-    table.attach(self.layout, 0, 1, 0, 1, gtk.FILL|gtk.EXPAND,
-                 gtk.FILL|gtk.EXPAND, 0, 0)
+    self.layout = CodecGraphLayout(codec, self.get_title(), statusbar)
+    table.attach(self.layout, 0, 1, 0, 1, gtk.AttachOptions.FILL|gtk.AttachOptions.EXPAND,
+                 gtk.AttachOptions.FILL|gtk.AttachOptions.EXPAND, 0, 0)
     vScrollbar = gtk.VScrollbar(None)
-    table.attach(vScrollbar, 1, 2, 0, 1, gtk.FILL|gtk.SHRINK,
-                 gtk.FILL|gtk.SHRINK, 0, 0)
+    table.attach(vScrollbar, 1, 2, 0, 1, gtk.AttachOptions.FILL|gtk.AttachOptions.SHRINK,
+                 gtk.AttachOptions.FILL|gtk.AttachOptions.SHRINK, 0, 0)
     hScrollbar = gtk.HScrollbar(None)
-    table.attach(hScrollbar, 0, 1, 1, 2, gtk.FILL|gtk.SHRINK,
-                 gtk.FILL|gtk.SHRINK, 0, 0)
+    table.attach(hScrollbar, 0, 1, 1, 2, gtk.AttachOptions.FILL|gtk.AttachOptions.SHRINK,
+                 gtk.AttachOptions.FILL|gtk.AttachOptions.SHRINK, 0, 0)
     vAdjust = self.layout.get_vadjustment()
     vScrollbar.set_adjustment(vAdjust)
     hAdjust = self.layout.get_hadjustment()
     hScrollbar.set_adjustment(hAdjust)
-    table.attach(statusbar, 0, 2, 2, 3, gtk.FILL|gtk.SHRINK,
-                 gtk.FILL|gtk.SHRINK, 0, 0)
+    table.attach(statusbar, 0, 2, 2, 3, gtk.AttachOptions.FILL|gtk.AttachOptions.SHRINK,
+                 gtk.AttachOptions.FILL|gtk.AttachOptions.SHRINK, 0, 0)
     self.show_all()
     GRAPH_WINDOWS[codec] = self
     TRACKER.add(self)

@@ -5,11 +5,9 @@ FILES=["hda_analyzer.py", "hda_guilib.py", "hda_codec.py", "hda_proc.py",
        "hda_graph.py", "hda_mixer.py"]
 
 try:
-  import gobject
-  import gtk
-  import pango
+  import gi
 except:
-  print("Please, install pygtk2 or python-gtk package")
+  print("Please, install python3-gi package")
 
 import os
 import sys

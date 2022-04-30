@@ -1314,7 +1314,7 @@ class HDACodec:
     str += print_amp_caps(self.amp_caps_in)
     str += 'Default Amp-Out caps: '
     str += print_amp_caps(self.amp_caps_out)
-    
+
     if self.base_nid == 0 or len(self.nodes) < 0:
       str += 'Invalid AFG subtree\n'
       return str
@@ -1838,9 +1838,8 @@ os.close(FD)
     return text
 
 def HDA_card_list():
-  from dircache import listdir
   result = []
-  for name in listdir('/dev/snd/'):
+  for name in os.listdir('/dev/snd/'):
     if name.startswith('controlC'):
       try:
         fd = os.open("/dev/snd/%s" % name, os.O_RDONLY)

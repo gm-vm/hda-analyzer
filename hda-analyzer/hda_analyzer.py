@@ -29,9 +29,12 @@ Usage: hda_analyzer [[codec_proc] ...]
 
 import os
 import sys
-import gobject
-import gtk
-import pango
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+from gi.repository import GObject as gobject
+from gi.repository import Gtk as gtk
+from gi.repository import Pango as pango
 
 from hda_codec import HDACodec, HDA_card_list, HDA_Exporter_pyscript, \
                       EAPDBTL_BITS, PIN_WIDGET_CONTROL_BITS, \
@@ -152,45 +155,45 @@ class HDAAnalyzer(gtk.Window):
     self.set_title(self.__class__.__name__)
     self.set_border_width(10)
 
-    self.tooltips = gtk.Tooltips()
+    self.tooltips = gtk.Tooltip()
 
-    hbox = gtk.HBox(False, 3)
+    hbox = gtk.Box.new(gtk.Orientation.HORIZONTAL, 3)
     self.add(hbox)
     
-    vbox = gtk.VBox(False, 0)
+    vbox = gtk.Box.new(gtk.Orientation.VERTICAL, 0)
     scrolled_window = gtk.ScrolledWindow()
-    scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-    scrolled_window.set_shadow_type(gtk.SHADOW_IN)
+    scrolled_window.set_policy(gtk.PolicyType.AUTOMATIC, gtk.PolicyType.AUTOMATIC)
+    scrolled_window.set_shadow_type(gtk.ShadowType.IN)
     treeview = self.__create_treeview()
     treeview.set_size_request(250, 600)
     scrolled_window.add(treeview)
-    vbox.pack_start(scrolled_window)
-    hbox1 = gtk.HBox(False, 0)
-    button = gtk.Button("About")
+    vbox.pack_start(scrolled_window, True, True, 0)
+    hbox1 = gtk.Box.new(gtk.Orientation.HORIZONTAL, 0)
+    button = gtk.Button.new_with_label("About")
     button.connect("clicked", self.__about_clicked)
-    self.tooltips.set_tip(button, "README! Show the purpose of this program.")
-    hbox1.pack_start(button)
-    button = gtk.Button("Revert")
+    #self.tooltips.set_tip(button, "README! Show the purpose of this program.")
+    hbox1.pack_start(button, False, False, 0)
+    button = gtk.Button.new_with_label("Revert")
     button.connect("clicked", self.__revert_clicked)
-    self.tooltips.set_tip(button, "Revert settings for selected codec.")
-    hbox1.pack_start(button)
-    button = gtk.Button("Diff")
+    #self.tooltips.set_tip(button, "Revert settings for selected codec.")
+    hbox1.pack_start(button, False, False, 0)
+    button = gtk.Button.new_with_label("Diff")
     button.connect("clicked", self.__diff_clicked)
-    self.tooltips.set_tip(button, "Show settings diff for selected codec.")
-    hbox1.pack_start(button)
-    button = gtk.Button("Exp")
+    #self.tooltips.set_tip(button, "Show settings diff for selected codec.")
+    hbox1.pack_start(button, False, False, 0)
+    button = gtk.Button.new_with_label("Exp")
     button.connect("clicked", self.__export_clicked)
-    self.tooltips.set_tip(button, "Export settings differences for selected codec.\nGenerates a python script.")
-    hbox1.pack_start(button)
-    button = gtk.Button("Graph")
+    #self.tooltips.set_tip(button, "Export settings differences for selected codec.\nGenerates a python script.")
+    hbox1.pack_start(button, False, False, 0)
+    button = gtk.Button.new_with_label("Graph")
     button.connect("clicked", self.__graph_clicked)
-    self.tooltips.set_tip(button, "Show graph for selected codec.")
-    hbox1.pack_start(button)
-    vbox.pack_start(hbox1, False, False)
-    hbox.pack_start(vbox, False, False)
+    #self.tooltips.set_tip(button, "Show graph for selected codec.")
+    hbox1.pack_start(button, False, False, 0)
+    vbox.pack_start(hbox1, False, False, 0)
+    hbox.pack_start(vbox, False, False, 0)
     
     self.notebook = gtk.Notebook()
-    hbox.pack_start(self.notebook, expand=True)
+    hbox.pack_start(self.notebook, True, True, 0)
     
     self.node_window = gtk.Table()
     self._new_notebook_page(self.node_window, '_Node editor')
@@ -206,15 +209,15 @@ class HDAAnalyzer(gtk.Window):
 
   def simple_dialog(self, type, msg):
     dialog = gtk.MessageDialog(self,
-                      gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-                      type, gtk.BUTTONS_OK, msg)
+                      gtk.DialogFlags.MODAL | gtk.DialogFlags.DESTROY_WITH_PARENT,
+                      type, gtk.ButtonsType.OK, msg)
     dialog.run()
     dialog.destroy()
 
   def __about_clicked(self, button):
     dialog = gtk.Dialog('About', self,
-                        gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-                        (gtk.STOCK_OK, gtk.RESPONSE_OK))
+                        gtk.DialogFlags.MODAL | gtk.DialogFlags.DESTROY_WITH_PARENT,
+                        (gtk.STOCK_OK, gtk.ResponseType.OK))
     text_view = gtk.TextView()
     text_view.set_border_width(4)
     str =  """\
@@ -232,13 +235,13 @@ mailing list - http://www.alsa-project.org .
 Bugs, ideas, comments about this program should be sent to alsa-devel
 mailing list, too.
 """
-    buffer = gtk.TextBuffer(None)
+    buffer = gtk.TextBuffer()
     iter = buffer.get_iter_at_offset(0)
     buffer.insert(iter, str[:-1])
     text_view.set_buffer(buffer)
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
-    dialog.vbox.pack_start(text_view, False, False)
+    dialog.vbox.pack_start(text_view, False, False, 0)
     dialog.show_all()
     dialog.run()
     dialog.destroy()
@@ -246,71 +249,71 @@ mailing list, too.
   def __revert_clicked(self, button):
     if not self.codec:
       msg = "Please, select a codec in left codec/node tree."
-      type = gtk.MESSAGE_WARNING
+      type = gtk.MessageType.WARNING
     else:
       self.codec.revert()
       self.__refresh()
       msg = "Setting for codec %s/%s (%s) was reverted!" % (self.codec.card, self.codec.device, self.codec.name)
-      type = gtk.MESSAGE_INFO
+      type = gtk.MessageType.INFO
 
     self.simple_dialog(type, msg)
 
   def __diff_clicked(self, button):
     if not self.codec:
-      self.simple_dialog(gtk.MESSAGE_WARNING, "Please, select a codec in left codec/node tree.")
+      self.simple_dialog(gtk.MessageType.WARNING, "Please, select a codec in left codec/node tree.")
       return
     dialog = gtk.Dialog('Diff', self,
-                        gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-                        (gtk.STOCK_OK, gtk.RESPONSE_OK))
+                        gtk.DialogFlags.MODAL | gtk.DialogFlags.DESTROY_WITH_PARENT,
+                        (gtk.STOCK_OK, gtk.ResponseType.OK))
     text_view = gtk.TextView()
     text_view.set_border_width(4)
     fontName = get_fixed_font()
-    text_view.modify_font(fontName)
+    text_view.override_font(fontName)
     str = do_diff1(self.codec, DIFF_TREE[self.card][self.codec.device])
     if str == '':
       str = 'No changes'
-    buffer = gtk.TextBuffer(None)
+    buffer = gtk.TextBuffer()
     iter = buffer.get_iter_at_offset(0)
     buffer.insert(iter, str[:-1])
     text_view.set_buffer(buffer)
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
-    dialog.vbox.pack_start(text_view, False, False)
+    dialog.vbox.pack_start(text_view, False, False, 0)
     dialog.show_all()
     dialog.run()
     dialog.destroy()
     
   def __export_clicked(self, button):
     if not self.codec:
-      self.simple_dialog(gtk.MESSAGE_WARNING, "Please, select a codec in left codec/node tree.")
+      self.simple_dialog(gtk.MessageType.WARNING, "Please, select a codec in left codec/node tree.")
       return
     exporter = HDA_Exporter_pyscript()
     self.codec.export(exporter)
     dialog = gtk.Dialog(exporter.title(), self,
-                        gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT,
-                        (gtk.STOCK_OK, gtk.RESPONSE_OK,
-                         gtk.STOCK_SAVE_AS, gtk.RESPONSE_YES))
+                        gtk.DialogFlags.MODAL | gtk.DialogFlags.DESTROY_WITH_PARENT,
+                        (gtk.STOCK_OK, gtk.ResponseType.OK,
+                         gtk.STOCK_SAVE_AS, gtk.ResponseType.YES))
     text_view = gtk.TextView()
     text_view.set_border_width(4)
     fontName = get_fixed_font()
-    text_view.modify_font(fontName)
+    text_view.override_font(fontName)
     str = exporter.text(self.codec)
-    buffer = gtk.TextBuffer(None)
+    buffer = gtk.TextBuffer()
     iter = buffer.get_iter_at_offset(0)
     buffer.insert(iter, str[:-1])
     text_view.set_buffer(buffer)
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
-    dialog.vbox.pack_start(text_view, False, False)
+    dialog.vbox.pack_start(text_view, False, False, 0)
     dialog.show_all()
     r = dialog.run()
     dialog.destroy()
-    if r == gtk.RESPONSE_YES:
+    if r == gtk.ResponseType.YES:
       sdialog = gtk.FileChooserDialog('Save %s as...' % exporter.stitle(),
-                    self, gtk.FILE_CHOOSER_ACTION_SAVE,
-                     (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
-                      gtk.STOCK_SAVE, gtk.RESPONSE_OK))
-      sdialog.set_default_response(gtk.RESPONSE_OK)
+                    self, gtk.FileChooserAction.SAVE,
+                     (gtk.STOCK_CANCEL, gtk.ResponseType.CANCEL,
+                      gtk.STOCK_SAVE, gtk.ResponseType.OK))
+      sdialog.set_default_response(gtk.ResponseType.OK)
 
       filter = gtk.FileFilter()
       filter.set_name("Python Scripts")
@@ -325,13 +328,13 @@ mailing list, too.
       sdialog.add_filter(filter)
 
       sr = sdialog.run()
-      if sr == gtk.RESPONSE_OK:
+      if sr == gtk.ResponseType.OK:
         save_to_file(sdialog.get_filename(), str, 0o755)
       sdialog.destroy()
     
   def __graph_clicked(self, button):
     if not self.codec:
-      self.simple_dialog(gtk.MESSAGE_WARNING, "Please, select a codec in left codec/node tree.")
+      self.simple_dialog(gtk.MessageType.WARNING, "Please, select a codec in left codec/node tree.")
       return
     create_graph(self.codec)
     
@@ -400,7 +403,7 @@ mailing list, too.
     self.node_window.show_all()
 
   def _new_notebook_page(self, widget, label):
-    l = gtk.Label('')
+    l = gtk.Label.new('')
     l.set_text_with_mnemonic(label)
     self.notebook.append_page(widget, l)
   
@@ -413,9 +416,9 @@ mailing list, too.
       gobject.TYPE_BOOLEAN
     )
    
-    treeview = gtk.TreeView(model)
+    treeview = gtk.TreeView.new_with_model(model)
     selection = treeview.get_selection()
-    selection.set_mode(gtk.SELECTION_BROWSE)
+    selection.set_mode(gtk.SelectionMode.BROWSE)
     treeview.set_size_request(200, -1)
 
     for card in CODEC_TREE:
@@ -447,7 +450,7 @@ mailing list, too.
           nid += 1
   
     cell = gtk.CellRendererText()
-    cell.set_property('style', pango.STYLE_ITALIC)
+    cell.set_property('style', pango.Style.ITALIC)
   
     column = gtk.TreeViewColumn('Nodes', cell, text=TITLE_COLUMN,
                                 style_set=ITALIC_COLUMN)
@@ -462,15 +465,15 @@ mailing list, too.
 
   def __create_text(self, callback):
     scrolled_window = gtk.ScrolledWindow()
-    scrolled_window.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
-    scrolled_window.set_shadow_type(gtk.SHADOW_IN)
+    scrolled_window.set_policy(gtk.PolicyType.AUTOMATIC, gtk.PolicyType.AUTOMATIC)
+    scrolled_window.set_shadow_type(gtk.ShadowType.IN)
     
     text_view = gtk.TextView()
     fontName = get_fixed_font()
-    text_view.modify_font(fontName)
+    text_view.override_font(fontName)
     scrolled_window.add(text_view)
     
-    buffer = gtk.TextBuffer(None)
+    buffer = gtk.TextBuffer()
     text_view.set_buffer(buffer)
     text_view.set_editable(False)
     text_view.set_cursor_visible(False)
