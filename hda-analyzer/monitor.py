@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2008-2010 by Jaroslav Kysela <perex@perex.cz>
 #
@@ -282,7 +282,7 @@ class Monitor(gtk.Window):
     txt = 'Volume bars (# = volume, . = empty)\n'
     max = 60
     for i in self.record_vols:
-      limit = (i * max) / 100
+      limit = (i * max) // 100
       for c in range(max):
         txt += c < limit and '#' or '.'
       txt += '\n'

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2008-2012 by Jaroslav Kysela <perex@perex.cz>
 #
@@ -58,13 +58,13 @@ def gethttpfile(url, size=1024*1024):
 def read_nodes2(card, codec):
   try:
     c = HDACodec(card, codec)
-  except OSError as msg:
-    if msg[0] == 13:
+  except OSError as error:
+    if error.errno == 13:
       print("Codec %i/%i unavailable - permissions..." % (card, codec))
-    elif msg[0] == 16:
+    elif error.errno == 16:
       print("Codec %i/%i is busy..." % (card, codec))
-    elif msg[0] != 2:
-      print("Codec %i/%i access problem (%s)" % repr(msg))
+    elif error.errno != 2:
+      print("Codec %i/%i access problem (%s)" % (card, codec, error.strerror))
     return
   c.analyze()
   if not card in CODEC_TREE:

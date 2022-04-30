@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2008-2012 by Jaroslav Kysela <perex@perex.cz>
 #
@@ -288,7 +288,7 @@ class HDAAmpCaps:
       return None
     if self.nsteps == 0:
       return 0
-    return (val * 100) / self.nsteps
+    return (val * 100) // self.nsteps
 
   def get_val_str(self, val):
     if self.ofs is None:
@@ -297,7 +297,7 @@ class HDAAmpCaps:
       db = self.get_val_db(val & 0x7f)
       res = val & 0x80 and "{mute-" or "{"
       res += "0x%02x" % (val & 0x7f)
-      res += ":%02i.%idB" % (db / 100, db % 100)
+      res += ":%02i.%idB" % (db // 100, db % 100)
       res += ":%i%%}" % (self.get_val_perc(val & 0x7f))
       return res
 
@@ -328,7 +328,7 @@ class HDAAmpVal:
     dir = self.dir == HDA_OUTPUT and (1<<15) or (1<<14)
     verb = VERBS['SET_AMP_GAIN_MUTE']
     if self.stereo:
-      indice = idx / 2
+      indice = idx // 2
       dir |= idx & 1 and (1 << 12) or (1 << 13)
     else:
       indice = idx
@@ -988,14 +988,14 @@ class HDACard:
       self.fd = ctl_fd = os.open("/dev/snd/controlC%i" % card, os.O_RDONLY)
     else:
       self.fd = os.dup(ctl_fd)
-    info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, '', '', '', '', '', '', '')
+    info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, b'', b'', b'', b'', b'', b'', b'')
     res = ioctl(ctl_fd, CTL_IOCTL_CARD_INFO, info)
     a = struct.unpack('ii16s16s32s80s16s80s128s', res)
-    self.id = a[2].replace('\x00', '')
-    self.driver = a[3].replace('\x00', '')
-    self.name = a[4].replace('\x00', '')
-    self.longname = a[5].replace('\x00', '')
-    self.components = a[8].replace('\x00', '')
+    self.id = a[2].replace(b'\x00', b'')
+    self.driver = a[3].replace(b'\x00', b'')
+    self.name = a[4].replace(b'\x00', b'')
+    self.longname = a[5].replace(b'\x00', b'')
+    self.components = a[8].replace(b'\x00', b'')
 
   def __del__(self):
     if not self.fd is None:
@@ -1028,14 +1028,14 @@ class HDACodec:
       self.fd = os.open("/dev/snd/hwC%sD%s" % (card, device), os.O_RDWR)
     else:
       self.fd = os.dup(clonefd)
-    info = struct.pack('Ii64s80si64s', 0, 0, '', '', 0, '')
+    info = struct.pack('Ii64s80si64s', 0, 0, b'', b'', 0, b'')
     res = ioctl(self.fd, IOCTL_INFO, info)
     name = struct.unpack('Ii64s80si64s', res)[3]
-    if not name.startswith('HDA Codec'):
+    if not name.startswith(b'HDA Codec'):
       raise IOError("unknown HDA hwdep interface")
     res = ioctl(self.fd, IOCTL_PVERSION, struct.pack('I', 0))
     self.version = struct.unpack('I', res)
-    if self.version < 0x00010000:	# 1.0.0
+    if self.version[0] < 0x00010000:	# 1.0.0
       raise IOError("unknown HDA hwdep version")
     self.mixer = AlsaMixer(self.card, ctl_fd=ctl_fd)
     self.parse_proc()
@@ -1315,7 +1315,7 @@ class HDACodec:
     str += 'Default Amp-Out caps: '
     str += print_amp_caps(self.amp_caps_out)
     
-    if self.base_nid == 0 or self.nodes < 0:
+    if self.base_nid == 0 or len(self.nodes) < 0:
       str += 'Invalid AFG subtree\n'
       return str
     
@@ -1799,7 +1799,7 @@ class HDA_Exporter_pyscript:
       text = '# no change'
     else:
       text = """\
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import struct
@@ -1846,12 +1846,12 @@ def HDA_card_list():
         fd = os.open("/dev/snd/%s" % name, os.O_RDONLY)
       except OSError as msg:
         continue
-      info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, '', '', '', '', '', '', '')
+      info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, b'', b'', b'', b'', b'', b'', b'')
       res = ioctl(fd, CTL_IOCTL_CARD_INFO, info)
       a = struct.unpack('ii16s16s32s80s16s80s128s', res)
       card = a[0]
-      components = a[8].replace('\x00', '')
-      if components.find('HDA:') >= 0:
+      components = a[8].replace(b'\x00', b'')
+      if components.find(b'HDA:') >= 0:
         result.append(HDACard(card, ctl_fd=fd))
       os.close(fd)
   return result
