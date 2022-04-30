@@ -1843,9 +1843,9 @@ def HDA_card_list():
   for name in listdir('/dev/snd/'):
     if name.startswith('controlC'):
       try:
-	fd = os.open("/dev/snd/%s" % name, os.O_RDONLY)
+        fd = os.open("/dev/snd/%s" % name, os.O_RDONLY)
       except OSError, msg:
-      	continue
+        continue
       info = struct.pack('ii16s16s32s80s16s80s128s', 0, 0, '', '', '', '', '', '', '')
       res = ioctl(fd, CTL_IOCTL_CARD_INFO, info)
       a = struct.unpack('ii16s16s32s80s16s80s128s', res)

@@ -139,7 +139,7 @@ class Monitor(gtk.Window):
 
   def generate_sound(self):
     self.set_status('Playing sound #%s on channel %s...' % \
-    			(self.generate_num, CHANNELS[self.channel]))
+                    (self.generate_num, CHANNELS[self.channel]))
     self.generate_num += 1
     channels = 2
     if self.channel >= 6:
@@ -149,11 +149,11 @@ class Monitor(gtk.Window):
     elif self.channel >= 2:
       channels = 4
     self.cmd = ["speaker-test", "-D", self.device,
-	       "-c", str(channels),
-	       "-s", str(self.channel + 1)]
+               "-c", str(channels),
+               "-s", str(self.channel + 1)]
     p = Popen(self.cmd,
-    	      shell=False, bufsize=0, stdin=None, stdout=PIPE, stderr=PIPE,
-	      close_fds=True)
+              shell=False, bufsize=0, stdin=None, stdout=PIPE, stderr=PIPE,
+              close_fds=True)
     for fd in [p.stdout.fileno(), p.stderr.fileno()]:
       set_fd_nonblocking(fd)
     self.generate_p = p
@@ -170,7 +170,7 @@ class Monitor(gtk.Window):
       try:
         os.kill(self.generate_p.pid, SIGKILL)
       except:
-      	pass
+        pass
     self.generate_p.wait()
     gobject.source_remove(self.generate_timeout_id)
     gobject.source_remove(self.generate_stdout_id)
@@ -181,9 +181,9 @@ class Monitor(gtk.Window):
   def generate_timeout(self):
     if self.generate_stdout == '' or self.generate_p.poll() != None:
       if self.generate_stdout == '':
-      	self.set_text('Cannot play. Device is busy...')
+        self.set_text('Cannot play. Device is busy...')
       else:
-      	self.set_text(' '.join(self.cmd) + '\n\n' + self.generate_stdout)
+        self.set_text(' '.join(self.cmd) + '\n\n' + self.generate_stdout)
       self.generate_cleanup()
       self.generate_sound()
       return False    
@@ -203,11 +203,11 @@ class Monitor(gtk.Window):
   def record_sound(self):
     self.set_status('Recording sound - %s channels...' % self.channels)
     self.cmd = ["arecord", "-D", self.device,
-	       "-f", "dat", "-c", str(self.channels),
-	       "-t", "raw", "-vvv", "/dev/null"]
+               "-f", "dat", "-c", str(self.channels),
+               "-t", "raw", "-vvv", "/dev/null"]
     p = Popen(self.cmd,
-    	      shell=False, bufsize=0, stdin=None, stdout=PIPE, stderr=PIPE,
-	      close_fds=True)
+              shell=False, bufsize=0, stdin=None, stdout=PIPE, stderr=PIPE,
+              close_fds=True)
     for fd in [p.stdout.fileno(), p.stderr.fileno()]:
       set_fd_nonblocking(fd)
     self.record_p = p
@@ -227,7 +227,7 @@ class Monitor(gtk.Window):
       try:
         os.kill(self.record_p.pid, SIGKILL)
       except:
-      	pass
+        pass
     self.record_p.wait()
     gobject.source_remove(self.record_timeout_id)
     gobject.source_remove(self.record_stdout_id)
@@ -238,9 +238,9 @@ class Monitor(gtk.Window):
   def record_timeout(self):
     if self.record_count == 0 or self.record_p.poll() != None:
       if self.record_count == '':
-      	self.set_text('Cannot record. Device is busy...')
+        self.set_text('Cannot record. Device is busy...')
       else:
-      	self.set_text(' '.join(self.cmd) + '\n\n' + self.record_stdout)
+        self.set_text(' '.join(self.cmd) + '\n\n' + self.record_stdout)
       self.record_cleanup()
       self.record_sound()
       return False    
@@ -249,28 +249,28 @@ class Monitor(gtk.Window):
   def record_io_stdout(self, source, condition):
     if condition & gobject.IO_IN:
       while 1:
-      	try:
-	  data = source.read(128)
-	except IOError, e:
-	  if e.errno == EAGAIN:
+        try:
+          data = source.read(128)
+        except IOError, e:
+          if e.errno == EAGAIN:
             self.show_record_vols()
-	    break
-	  raise IOError, e
-	self.record_data += data
-	self.record_count += len(data)
-	pos = self.record_data.find('\n') 
-	if pos >= 0:
-	  line = self.record_data[:pos]
-	  self.record_data = self.record_data[pos+1:]
-	  pos = line.find('%')
-	  if pos >= 0:
-	    pos1 = pos - 1
-	    while line[pos1] >= '0' and line[pos1] <= '9':
-	      pos1 -= 1
+            break
+          raise IOError, e
+        self.record_data += data
+        self.record_count += len(data)
+        pos = self.record_data.find('\n')
+        if pos >= 0:
+          line = self.record_data[:pos]
+          self.record_data = self.record_data[pos+1:]
+          pos = line.find('%')
+          if pos >= 0:
+            pos1 = pos - 1
+            while line[pos1] >= '0' and line[pos1] <= '9':
+              pos1 -= 1
             self.record_vols.append(int(line[pos1:pos]))
             if len(self.record_vols) > 24:
               del self.record_vols[0]
-	#print data
+        #print data
       return True
 
   def record_io_stderr(self, source, condition):
@@ -284,7 +284,7 @@ class Monitor(gtk.Window):
     for i in self.record_vols:
       limit = (i * max) / 100
       for c in range(max):
-      	txt += c < limit and '#' or '.'
+        txt += c < limit and '#' or '.'
       txt += '\n'
     self.set_text(txt)
 

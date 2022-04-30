@@ -909,7 +909,7 @@ class CodecGraph(gtk.Window):
                  gtk.FILL|gtk.SHRINK, 0, 0)
     hScrollbar = gtk.HScrollbar(None)
     table.attach(hScrollbar, 0, 1, 1, 2, gtk.FILL|gtk.SHRINK,
-                 gtk.FILL|gtk.SHRINK, 0, 0)	
+                 gtk.FILL|gtk.SHRINK, 0, 0)
     vAdjust = self.layout.get_vadjustment()
     vScrollbar.set_adjustment(vAdjust)
     hAdjust = self.layout.get_hadjustment()
