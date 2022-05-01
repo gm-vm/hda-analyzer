@@ -44,7 +44,7 @@ class Node:
   def longdesc(self):
     return "0x%02x" % self.node.nid
 
-  def expose(self, cr, event, graph):
+  def expose(self, cr, graph):
 
     width = self.myarea[2]
     height = self.myarea[3]
@@ -167,7 +167,7 @@ class Route:
           niceprint("DST " + dst, vals[1])
     return res
 
-  def expose(self, cr, event):
+  def expose(self, cr):
     width = self.src.myarea[2]
     height = self.src.myarea[3]
 
@@ -447,7 +447,7 @@ class CodecGraphLayout(gtk.Layout):
     self.add_events(gdk.EventMask.EXPOSURE_MASK | gdk.EventMask.POINTER_MOTION_MASK |
                     gdk.EventMask.BUTTON_PRESS_MASK | gdk.EventMask.BUTTON_RELEASE_MASK |
                     gdk.EventMask.LEAVE_NOTIFY_MASK | gdk.EventMask.SCROLL_MASK)
-    #self.expose_handler = self.connect("expose-event", self.expose)
+    self.expose_handler = self.connect("draw", self.expose)
     self.click_handler = self.connect("button-press-event", self.button_click)
     self.release_handler = self.connect("button-release-event", self.button_release)
     self.motion_handler = self.connect("motion-notify-event", self.mouse_move)
@@ -556,25 +556,25 @@ class CodecGraphLayout(gtk.Layout):
     self.pdialog = None
     return res
 
-  def expose(self, widget, event):
-    if not self.flags() & gtk.REALIZED:
+  def expose(self, area, context):
+    if not self.get_realized():
       return
 
     # background
-    cr = self.bin_window.cairo_create()
+    cr = self.get_bin_window().cairo_create()
     cr.set_source_rgb(1.0, 1.0, 1.0)
-    cr.rectangle(event.area.x, event.area.y,
-                 event.area.width, event.area.height)
+    cr.rectangle(area.get_hadjustment().get_value(), area.get_vadjustment().get_value(),
+                 area.get_allocated_width(), area.get_allocated_height())
     cr.clip()
     cr.paint()
 
     # draw nodes
     for node in self.nodes:
-      node.expose(cr, event, self)
+      node.expose(cr, self)
       
     # draw routes
     for route in self.routes:
-      route.expose(cr, event)
+      route.expose(cr)
 
   def compressx(self, sx):
     first = None
