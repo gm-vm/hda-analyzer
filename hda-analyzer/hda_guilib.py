@@ -682,7 +682,7 @@ class NodeGui(gtk.ScrolledWindow):
     hbox = gtk.Box.new(gtk.Orientation.HORIZONTAL, 0)
     hbox.pack_start(self.__build_node_caps(node), True, True, 0)
     hbox.pack_start(self.__build_connection_list(node), True, True, 0)
-    vbox.pack_start(hbox, False, False, 0)
+    vbox.pack_start(hbox, True, True, 0)
     if node.in_amp or node.out_amp:
       vbox.pack_start(self.__build_amps(node), False, False, 0)
     if node.wtype_id == 'PIN':
